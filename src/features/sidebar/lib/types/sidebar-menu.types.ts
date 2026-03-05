@@ -5,6 +5,7 @@ export interface MenuSidebarItem {
     active: boolean;
     icon: IconType;
     path: string;
+    unreadCount?: number;
 }
 
 export interface MenuCategorySidebar {

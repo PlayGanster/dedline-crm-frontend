@@ -35,6 +35,25 @@ const SidebarMenuItem: React.FC<SidebarItemProps> = ({
                 className="min-w-5"
             />
             {item.name}
+            {item.unreadCount !== undefined && item.unreadCount > 0 && (
+                <span className="
+                    ml-auto
+                    flex
+                    items-center
+                    justify-center
+                    min-w-5
+                    h-5
+                    px-1.5
+                    rounded-full
+                    bg-red-500
+                    text-white
+                    text-xs
+                    font-bold
+                    shadow-sm
+                ">
+                    {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                </span>
+            )}
         </div>
     )
 }

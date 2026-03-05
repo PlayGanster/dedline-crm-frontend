@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Phone, CheckCircle2, FileText, UserPlus } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useRealtime } from "@/shared/providers/realtime"
 
 interface IncomingCall {
   id: number;
@@ -37,6 +38,7 @@ const statusColors: Record<string, string> = {
 
 const IncomingCallsList = () => {
   const { error: notifyError, success: notifySuccess } = useNotification();
+  const { on, off } = useRealtime();
   const navigate = useNavigate();
   const [calls, setCalls] = useState<ItemsType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -266,6 +268,28 @@ const IncomingCallsList = () => {
   const handleConvertToApplication = (item: any) => {
     navigate(`/incoming-calls/${item.id}/convert-to-application`);
   };
+
+  // Обработка нового звонка через WebSocket
+  useEffect(() => {
+    const handleNewIncomingCall = (data: any) => {
+      console.log('[IncomingCalls] New call received:', data);
+      // Проверяем, нет ли уже такого звонка
+      setCalls(prev => {
+        const exists = prev.some(call => call.id === data.id || call.external_call_id === data.external_call_id);
+        if (exists) {
+          console.log('[IncomingCalls] Call already exists, skipping');
+          return prev;
+        }
+        notifySuccess('Новый звонок', `Входящий звонок с номера ${data.phone}`);
+        return [data, ...prev];
+      });
+    };
+
+    on('new-incoming-call', handleNewIncomingCall);
+    return () => {
+      off('new-incoming-call', handleNewIncomingCall);
+    };
+  }, [on, off, notifySuccess]);
 
   return (
     <div className="w-full max-w-full mx-auto space-y-3">

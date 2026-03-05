@@ -66,6 +66,18 @@ class RealtimeService {
       console.log('[Realtime] Received new-message:', data);
       this.emitEvent('new-message', data);
     });
+    this.socket.on('read', (data: any) => {
+      console.log('[Realtime] Received read:', data);
+      this.emitEvent('read', data);
+    });
+    this.socket.on('read-messages', (data: any) => {
+      console.log('[Realtime] Received read-messages:', data);
+      this.emitEvent('read-messages', data);
+    });
+    this.socket.on('new-incoming-call', (data: any) => {
+      console.log('[Realtime] Received new-incoming-call:', data);
+      this.emitEvent('new-incoming-call', data);
+    });
   }
 
   disconnect() {
@@ -92,7 +104,7 @@ class RealtimeService {
     this.listeners.get(event)!.add(callback);
 
     // Subscribe to socket events for known events
-    if (['message', 'notification', 'update', 'force-logout', 'new-message'].includes(event) && this.socket) {
+    if (['message', 'notification', 'update', 'force-logout', 'new-message', 'read', 'read-messages', 'new-incoming-call'].includes(event) && this.socket) {
       this.socket.on(event, callback);
     }
   }
@@ -103,7 +115,7 @@ class RealtimeService {
       callbacks.delete(callback);
     }
 
-    if (this.socket && ['message', 'notification', 'update', 'force-logout', 'new-message'].includes(event)) {
+    if (this.socket && ['message', 'notification', 'update', 'force-logout', 'new-message', 'read', 'read-messages', 'new-incoming-call'].includes(event)) {
       this.socket.off(event, callback);
     }
   }

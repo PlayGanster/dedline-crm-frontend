@@ -2,14 +2,12 @@
 import {
   MdAutoGraph, MdCall, MdPeople, MdSettings
 } from "react-icons/md";
-import { RiUserFill } from "react-icons/ri";
 import { FaFileContract, FaFileInvoiceDollar, FaPeopleCarryBox, FaUsers } from "react-icons/fa6";
 import { TbTransactionDollar } from "react-icons/tb";
 import { LuBadgeDollarSign, LuLogs, LuUser } from "react-icons/lu";
 import { GiExpense } from "react-icons/gi";
 import { IoIosNotifications } from "react-icons/io";
 import { BiChat } from "react-icons/bi";
-import { GrDocumentText } from "react-icons/gr";
 import type { MenuCategorySidebar } from "../types/sidebar-menu.types";
 
 export const MENU_DATA: MenuCategorySidebar[] = [
