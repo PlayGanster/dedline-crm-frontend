@@ -44,6 +44,8 @@ const IncomingCallsList = () => {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState([]);
   const [sortConfig, setSortConfig] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '—';
@@ -307,12 +309,13 @@ const IncomingCallsList = () => {
         onFilter={handleFilter}
         pagination
         paginationConfig={{
-          page: 1,
-          pageSize: 20,
+          page: currentPage,
+          pageSize,
           totalItems: calls.length,
-          totalPages: Math.ceil(calls.length / 20)
+          totalPages: Math.ceil(calls.length / pageSize)
         }}
-        onPageChange={() => {}}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={setPageSize}
         loading={loading}
         emptyMessage="Входящих звонков нет"
       />
