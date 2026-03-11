@@ -276,11 +276,11 @@ const PerformersList = () => {
   };
 
   const handleViewPerformer = (item: any) => {
-    navigate(`/performers/${item.id}?from=/performers`);
+    navigate(`/performers/${item.id}`, { state: { from: '/performers' } });
   };
 
   const handleEditPerformer = (item: any) => {
-    navigate(`/performers/${item.id}/edit?from=/performers`);
+    navigate(`/performers/${item.id}/edit`, { state: { from: '/performers' } });
   };
 
   const handleDeletePerformer = async (item: any) => {

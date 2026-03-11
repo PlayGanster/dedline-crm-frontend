@@ -129,6 +129,10 @@
   html {
     @apply bg-background;
   }
+  /* All buttons should have pointer cursor */
+  button, [role="button"] {
+    cursor: pointer;
+  }
 }
 
 * {

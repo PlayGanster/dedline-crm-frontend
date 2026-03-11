@@ -1,4 +1,5 @@
 export { default as IncomingCallsPage } from "./IncomingCallsPage";
 export { default as ConvertToClientPage } from "./ConvertToClientPage";
 export { default as ConvertToApplicationPage } from "./ConvertToApplicationPage";
+export { default as ConvertToClientAndApplicationPage } from "./ConvertToClientAndApplicationPage";
 export { default as CreateIncomingCallPage } from "./CreateIncomingCallPage";

@@ -38,6 +38,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   const handleConfirm = async () => {
     await onConfirm();
+    onOpenChange(false);
   };
 
   return (

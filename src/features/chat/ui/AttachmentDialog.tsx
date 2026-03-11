@@ -9,6 +9,10 @@ import "react-pdf/dist/Page/TextLayer.css";
 // Setup PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
+// Use API base URL from environment (without /api for file downloads)
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const FILE_BASE_URL = API_BASE_URL.replace('/api', '');
+
 interface Attachment {
   id: number;
   filename: string;
@@ -42,10 +46,10 @@ export const AttachmentDialog = ({
 
   const handleDownload = async () => {
     if (!currentAttachment) return;
-    
+
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3000${currentAttachment.file_path}`);
+      const response = await fetch(`${FILE_BASE_URL}${currentAttachment.file_path}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -122,7 +126,7 @@ export const AttachmentDialog = ({
   useEffect(() => {
     if (currentAttachment && isText(currentAttachment.mime_type)) {
       setLoading(true);
-      fetch(`http://localhost:3000${currentAttachment.file_path}`)
+      fetch(`${FILE_BASE_URL}${currentAttachment.file_path}`)
         .then(res => res.text())
         .then(text => {
           setTextContent(text);
@@ -204,13 +208,13 @@ export const AttachmentDialog = ({
               <>
                 {isImage(currentAttachment.mime_type) ? (
                   <img
-                    src={`http://localhost:3000${currentAttachment.file_path}`}
+                    src={`${FILE_BASE_URL}${currentAttachment.file_path}`}
                     alt={currentAttachment.original_name}
                     className="max-w-full max-h-[55vh] object-contain rounded-lg shadow-lg"
                   />
                 ) : isVideo(currentAttachment.mime_type) ? (
                   <video
-                    src={`http://localhost:3000${currentAttachment.file_path}`}
+                    src={`${FILE_BASE_URL}${currentAttachment.file_path}`}
                     controls
                     className="max-w-full max-h-[55vh] rounded-lg shadow-lg"
                   />
@@ -224,7 +228,7 @@ export const AttachmentDialog = ({
                       </svg>
                     </div>
                     <audio
-                      src={`http://localhost:3000${currentAttachment.file_path}`}
+                      src={`${FILE_BASE_URL}${currentAttachment.file_path}`}
                       controls
                       className="w-full"
                     />
@@ -235,7 +239,7 @@ export const AttachmentDialog = ({
                 ) : isPDF(currentAttachment.mime_type) ? (
                   <div className="bg-card rounded-lg shadow-lg overflow-auto max-h-[55vh]">
                     <Document
-                      file={`http://localhost:3000${currentAttachment.file_path}`}
+                      file={`${FILE_BASE_URL}${currentAttachment.file_path}`}
                       onLoadSuccess={onDocumentLoadSuccess}
                       loading={
                         <div className="w-[300px] h-[400px] flex items-center justify-center">
@@ -332,7 +336,7 @@ export const AttachmentDialog = ({
               >
                 {isImage(attachment.mime_type) ? (
                   <img
-                    src={`http://localhost:3000${attachment.file_path}`}
+                    src={`${FILE_BASE_URL}${attachment.file_path}`}
                     alt={attachment.original_name}
                     className="w-full h-full object-cover"
                   />

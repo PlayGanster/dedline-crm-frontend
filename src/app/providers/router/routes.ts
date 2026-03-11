@@ -31,6 +31,7 @@ const LazyApplicationEditPage = lazy(() => import("@pages/applications").then(mo
 const LazyIncomingCallsPage = lazy(() => import("@pages/incoming-calls").then(module => ({ default: module.IncomingCallsPage })));
 const LazyConvertToClientPage = lazy(() => import("@pages/incoming-calls").then(module => ({ default: module.ConvertToClientPage })));
 const LazyConvertToApplicationPage = lazy(() => import("@pages/incoming-calls").then(module => ({ default: module.ConvertToApplicationPage })));
+const LazyConvertToClientAndApplicationPage = lazy(() => import("@pages/incoming-calls").then(module => ({ default: module.ConvertToClientAndApplicationPage })));
 const LazyCreateIncomingCallPage = lazy(() => import("@pages/incoming-calls").then(module => ({ default: module.CreateIncomingCallPage })));
 const LazyTransactionsPage = lazy(() => import("@pages/transactions").then(module => ({ default: module.TransactionsPage })));
 const LazyTransactionProfilePage = lazy(() => import("@pages/transactions").then(module => ({ default: module.TransactionProfilePage })));
@@ -186,6 +187,11 @@ export const routes: RouteType[] = [
     {
         path: '/incoming-calls/:id/convert-to-application',
         component: LazyConvertToApplicationPage,
+        haveLayout: true
+    },
+    {
+        path: '/incoming-calls/:id/convert-to-client-and-application',
+        component: LazyConvertToClientAndApplicationPage,
         haveLayout: true
     },
     {

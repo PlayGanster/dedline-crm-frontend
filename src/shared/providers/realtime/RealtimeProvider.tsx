@@ -47,8 +47,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Connect with userId if user is authenticated
+    // Use current origin for WebSocket connection (works with nginx proxy)
     if (user) {
-      connect('http://localhost:3000');
+      const wsUrl = import.meta.env.VITE_WS_URL || window.location.origin;
+      connect(wsUrl);
     }
     updateConnectionState();
 
