@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { PerformerDocuments } from "@/features/performer-documents"
+import { PerformerRequisites } from "@/features/performer-requisites"
 import { ArrowLeft } from "lucide-react"
 
 const PerformerCreatePage = () => {
@@ -38,15 +39,26 @@ const PerformerCreatePage = () => {
     }
   }
 
+  const handleComplete = () => {
+    navigate(`/performers/${createdPerformerId}?from=/performers`)
+  }
+
   return (
     <div className="w-full h-full flex flex-col">
-      <PageHeader 
+      <PageHeader
         name={createdPerformerId ? "Исполнитель создан" : "Создание исполнителя"}
         actions={
-          <Button variant="outline" onClick={() => navigate('/performers')}>
-            <ArrowLeft size={16} className="mr-2" />
-            {createdPerformerId ? 'Готово' : 'Отмена'}
-          </Button>
+          <div className="flex gap-2">
+            {createdPerformerId && (
+              <Button variant="default" onClick={handleComplete}>
+                Завершить
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => navigate('/performers')}>
+              <ArrowLeft size={16} className="mr-2" />
+              {createdPerformerId ? 'Отмена' : 'Назад'}
+            </Button>
+          </div>
         }
       />
       <div className="flex-1 overflow-auto p-[12px]">
@@ -72,12 +84,24 @@ const PerformerCreatePage = () => {
                 <div className="space-y-2"><Label htmlFor="passport_number">Номер паспорта</Label><Input id="passport_number" value={formData.passport_number} onChange={(e) => setFormData({...formData, passport_number: e.target.value})}/></div>
               </CardContent>
             </Card>
+
             <div className="flex justify-end">
               <Button type="submit" disabled={loading}>{loading ? 'Создание...' : 'Создать'}</Button>
             </div>
           </form>
         ) : (
-          <PerformerDocuments performerId={createdPerformerId} />
+          <>
+            <div className="mt-4 flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground">
+                Исполнитель создан. Теперь вы можете добавить реквизиты и документы.
+              </p>
+              <Button variant="default" onClick={handleComplete} className="gap-2">
+                Завершить и перейти к просмотру
+              </Button>
+            </div>
+            <div className="mt-4"><PerformerRequisites performerId={createdPerformerId} /></div>
+            <div className="mt-4"><PerformerDocuments performerId={createdPerformerId} /></div>
+          </>
         )}
       </div>
     </div>

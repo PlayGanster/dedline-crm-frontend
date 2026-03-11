@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Upload, Download, Trash2, CheckCircle2, Circle } from "lucide-react"
 import { useAuthStore } from "@/features/auth"
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 interface Document {
   id: number
   clientId: number
@@ -126,7 +128,7 @@ const ClientDocuments: React.FC<ClientDocumentsProps> = ({ clientId }) => {
 
   const handleDownload = async (id: number, originalName: string) => {
     try {
-      const response = await fetch(`http://localhost:3000/client-documents/${id}/download`, {
+      const response = await fetch(`${API_BASE_URL}/client-documents/${id}/download`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },

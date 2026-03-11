@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Send, Users, Construction, MessageSquare, Plus, X, Paperclip, Link as LinkIcon, Check, Clock, File as FileIcon, MoreVertical, Reply } from "lucide-react"
+import { Send, Users, Construction, MessageSquare, Plus, X, Paperclip, Link as LinkIcon, Check, Clock, File as FileIcon, MoreVertical, Reply, Music as MusicIcon } from "lucide-react"
 import { useRealtime } from "@/shared/providers/realtime"
 import { useAuthStore } from "@/features/auth"
 import {
@@ -18,6 +18,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { FileUploadZone, AttachmentDialog, ReplyContextMenu, ReplyPreview } from "@/features/chat"
+
+// Use API base URL from environment (without /api for file downloads)
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const FILE_BASE_URL = API_BASE_URL.replace('/api', '');
 
 interface ChatUser {
   id: number;
@@ -94,15 +98,24 @@ const MessageAttachment = memo(({ attachment, onOpen }: { attachment: Attachment
   };
 
   if (isImage) {
+    const imageUrl = `${FILE_BASE_URL}${attachment.file_path}`;
+    console.log('[Chat] Image URL:', imageUrl, 'File path:', attachment.file_path);
     return (
-      <div 
+      <div
         className="relative group cursor-pointer overflow-hidden rounded-lg"
         onClick={handleClick}
       >
         <img
-          src={`http://localhost:3000${attachment.file_path}`}
+          src={imageUrl}
           alt={attachment.original_name}
           className="max-w-[200px] max-h-[200px] object-cover rounded-lg hover:opacity-90 transition-opacity"
+          onError={(e) => {
+            console.error('[Chat] Image failed to load:', imageUrl);
+            (e.target as HTMLImageElement).style.display = 'none';
+          }}
+          onLoad={() => {
+            console.log('[Chat] Image loaded successfully:', imageUrl);
+          }}
         />
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-end justify-end p-2">
           <div className="bg-black/60 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
@@ -115,12 +128,12 @@ const MessageAttachment = memo(({ attachment, onOpen }: { attachment: Attachment
 
   if (isVideo) {
     return (
-      <div 
+      <div
         className="relative group cursor-pointer"
         onClick={handleClick}
       >
         <video
-          src={`http://localhost:3000${attachment.file_path}`}
+          src={`${FILE_BASE_URL}${attachment.file_path}`}
           className="max-w-[200px] max-h-[200px] object-cover rounded-lg"
         />
         <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
@@ -143,7 +156,7 @@ const MessageAttachment = memo(({ attachment, onOpen }: { attachment: Attachment
           <p className="text-xs text-muted-foreground">{formatFileSize(attachment.size)}</p>
         </div>
         <audio
-          src={`http://localhost:3000${attachment.file_path}`}
+          src={`${FILE_BASE_URL}${attachment.file_path}`}
           controls
           className="h-8"
         />
@@ -154,7 +167,7 @@ const MessageAttachment = memo(({ attachment, onOpen }: { attachment: Attachment
   // Другие файлы
   return (
     <a
-      href={`http://localhost:3000${attachment.file_path}`}
+      href={`${FILE_BASE_URL}${attachment.file_path}`}
       target="_blank"
       rel="noopener noreferrer"
       className="flex items-center gap-3 p-3 bg-white/5 rounded-lg min-w-[200px] hover:bg-white/10 transition-colors"
@@ -172,16 +185,6 @@ const MessageAttachment = memo(({ attachment, onOpen }: { attachment: Attachment
 
 MessageAttachment.displayName = 'MessageAttachment';
 
-function MusicIcon(props: any) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 18V5l12-2v13" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="18" cy="16" r="3" />
-    </svg>
-  );
-}
-
 // Отдельный компонент для чата
 const ChatWindow = memo(({
   selectedChat,
@@ -196,6 +199,7 @@ const ChatWindow = memo(({
   replyToMessage,
   setReplyToMessage,
   onContextMenu,
+  onlineUsers,
 }: {
   selectedChat: Chat | null;
   messages: Message[];
@@ -209,6 +213,7 @@ const ChatWindow = memo(({
   replyToMessage: Message | null;
   setReplyToMessage: (msg: Message | null) => void;
   onContextMenu: (e: React.MouseEvent, message: Message) => void;
+  onlineUsers: Set<number>;
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -258,9 +263,20 @@ const ChatWindow = memo(({
           {selectedChat.user?.avatar && <AvatarImage src={selectedChat.user.avatar} alt={selectedChat.user.last_name} />}
           <AvatarFallback>{selectedChat.user?.last_name?.[0]}{selectedChat.user?.first_name?.[0]}</AvatarFallback>
         </Avatar>
-        <div>
-          <p className="font-medium">{selectedChat.user ? getUserFullName(selectedChat.user) : 'Чат'}</p>
-          <p className="text-xs text-muted-foreground">Онлайн</p>
+        <div className="flex items-center gap-2">
+          <div>
+            <p className="font-medium">{selectedChat.user ? getUserFullName(selectedChat.user) : 'Чат'}</p>
+            <div className="flex items-center gap-1">
+              {selectedChat.user && selectedChat.user.id !== currentUser?.id && (
+                <>
+                  <div className={`w-2 h-2 rounded-full ${onlineUsers.has(selectedChat.user.id) ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  <p className="text-xs text-muted-foreground">
+                    {onlineUsers.has(selectedChat.user.id) ? 'Онлайн' : 'Офлайн'}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -544,7 +560,8 @@ const ChatsPage = () => {
   const [crmUsers, setCrmUsers] = useState<any[]>([])
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
-  
+  const [onlineUsers, setOnlineUsers] = useState<Set<number>>(new Set())
+
   // Reply system states
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null)
   const [contextMenu, setContextMenu] = useState<{
@@ -562,6 +579,14 @@ const ChatsPage = () => {
         return { ...chat, unreadCount: count.count > 0 ? count.count : undefined }
       }))
       setChats(chatsWithCount)
+      
+      // Запрашиваем список онлайн пользователей
+      try {
+        const online: { userIds: number[] } = await api.get('/chat/online-users')
+        setOnlineUsers(new Set(online.userIds))
+      } catch (err) {
+        console.error('[OnlineUsers] Failed to fetch:', err)
+      }
     } catch (err: any) {
       console.error('[Chats] Error:', err)
     }
@@ -589,7 +614,7 @@ const ChatsPage = () => {
       if (data.isUpdate) {
         setMessages(prev => prev.map(m => {
           if (m.id === messageData.id) {
-            return { ...messageData, is_read: true }
+            return { ...messageData, is_read: m.is_read } // Сохраняем статус прочтения
           }
           return m
         }))
@@ -605,7 +630,7 @@ const ChatsPage = () => {
             // Обновляем существующее (добавляем вложения если есть)
             return prev.map(m => {
               if (m.id === messageData.id) {
-                return { ...messageData, is_read: true }
+                return { ...messageData, is_read: m.is_read } // Сохраняем статус прочтения
               }
               return m
             })
@@ -614,10 +639,11 @@ const ChatsPage = () => {
         })
         return
       }
-      // Добавляем сообщение от собеседника и сразу помечаем как прочитанное
+      // Добавляем сообщение от собеседника
       setMessages(prev => {
         const exists = prev.some((m: Message) => m.id === messageData.id)
         if (exists) return prev
+        // Сообщения от других пользователей сразу считаем прочитанными
         return [...prev, { ...messageData, is_read: true }]
       })
       // Помечаем как прочитанное на сервере
@@ -632,20 +658,44 @@ const ChatsPage = () => {
     console.log('[Chats] Received read:', data)
     if (selectedChat && data.chatId === selectedChat.id) {
       // Обновляем все наши сообщения как прочитанные
-      setMessages(prev => prev.map(m => 
+      setMessages(prev => prev.map(m =>
         m.sender_id === currentUser?.id ? { ...m, is_read: true } : m
       ))
     }
   }, [selectedChat, currentUser])
 
+  // Обработка подключения пользователя
+  const handleUserConnected = useCallback((data: any) => {
+    console.log('[Chats] User connected:', data)
+    if (data.userId) {
+      setOnlineUsers(prev => new Set(prev).add(data.userId))
+    }
+  }, [])
+
+  // Обработка отключения пользователя
+  const handleUserDisconnected = useCallback((data: any) => {
+    console.log('[Chats] User disconnected:', data)
+    if (data.userId) {
+      setOnlineUsers(prev => {
+        const next = new Set(prev)
+        next.delete(data.userId)
+        return next
+      })
+    }
+  }, [])
+
   useEffect(() => {
     on('new-message', handleNewMessage)
     on('read', handleRead)
+    on('user-connected', handleUserConnected)
+    on('user-disconnected', handleUserDisconnected)
     return () => {
       off('new-message', handleNewMessage)
       off('read', handleRead)
+      off('user-connected', handleUserConnected)
+      off('user-disconnected', handleUserDisconnected)
     }
-  }, [on, off, handleNewMessage, handleRead])
+  }, [on, off, handleNewMessage, handleRead, handleUserConnected, handleUserDisconnected])
 
   useEffect(() => {
     fetchChats().finally(() => setLoading(false))
@@ -667,6 +717,7 @@ const ChatsPage = () => {
         sender_id: currentUser?.id || 0,
         content: newMessage,
         created_at: new Date().toISOString(),
+        is_read: false, // Одна галочка при отправке
         sender: {
           first_name: currentUser?.first_name || '',
           last_name: currentUser?.last_name || '',
@@ -688,14 +739,14 @@ const ChatsPage = () => {
         content: newMessage,
         reply_to_id: replyToMessage?.id,
       })
-      
+
       // Загружаем файлы по одному
       const uploadedAttachments: Attachment[] = []
       for (const file of pendingFiles) {
         try {
           const formData = new FormData()
           formData.append('file', file)
-          
+
           const attachmentResponse: Attachment = await api.post(
             `/chat/${selectedChat.id}/messages/${messageResponse.id}/attachments`,
             formData,
@@ -715,7 +766,7 @@ const ChatsPage = () => {
           id: messageResponse.id,
           attachments: uploadedAttachments,
           created_at: messageResponse.created_at,
-          is_read: messageResponse.is_read ?? true, // Для отправителя сообщение всегда прочитано
+          is_read: false, // Одна галочка пока не получим событие read
           reply_to: messageResponse.reply_to,
         }]
       })
@@ -866,10 +917,17 @@ const ChatsPage = () => {
                         }`}
                         onClick={() => selectChat(chat)}
                       >
-                        <Avatar className="h-10 w-10">
-                          {chat.user?.avatar && <AvatarImage src={chat.user.avatar} alt={chat.user.last_name} />}
-                          <AvatarFallback>{chat.user?.last_name?.[0]}{chat.user?.first_name?.[0]}</AvatarFallback>
-                        </Avatar>
+                        <div className="relative">
+                          <Avatar className="h-10 w-10">
+                            {chat.user?.avatar && <AvatarImage src={chat.user.avatar} alt={chat.user.last_name} />}
+                            <AvatarFallback>{chat.user?.last_name?.[0]}{chat.user?.first_name?.[0]}</AvatarFallback>
+                          </Avatar>
+                          {chat.user && chat.user.id !== currentUser?.id && (
+                            <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${
+                              onlineUsers.has(chat.user.id) ? 'bg-green-500' : 'bg-gray-400'
+                            }`} />
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <p className={`text-sm truncate ${
@@ -921,6 +979,7 @@ const ChatsPage = () => {
                 replyToMessage={replyToMessage}
                 setReplyToMessage={setReplyToMessage}
                 onContextMenu={handleContextMenu}
+                onlineUsers={onlineUsers}
               />
             </div>
           </TabsContent>

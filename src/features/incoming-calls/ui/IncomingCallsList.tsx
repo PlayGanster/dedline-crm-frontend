@@ -5,9 +5,12 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Phone, CheckCircle2, FileText, UserPlus } from "lucide-react"
+import { Phone, CheckCircle2, FileText, UserPlus, Plus, MessageSquare } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useRealtime } from "@/shared/providers/realtime"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 
 interface IncomingCall {
   id: number;
@@ -44,8 +47,15 @@ const IncomingCallsList = () => {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState([]);
   const [sortConfig, setSortConfig] = useState<any>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [showQuickActionsDialog, setShowQuickActionsDialog] = useState(false);
+  const [selectedCall, setSelectedCall] = useState<any>(null);
+  const [showNoteDialog, setShowNoteDialog] = useState(false);
+  const [selectedCallForNote, setSelectedCallForNote] = useState<any>(null);
+  const [noteText, setNoteText] = useState('');
+  const [hoveredNoteId, setHoveredNoteId] = useState<number | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number, left: number } | null>(null);
+  const [tooltipContent, setTooltipContent] = useState<string>('');
+  const [isTooltipHovered, setIsTooltipHovered] = useState(false);
 
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '—';
@@ -174,6 +184,33 @@ const IncomingCallsList = () => {
       }
     },
     {
+      id: 'notes',
+      title: 'Комментарий',
+      dataType: 'string',
+      sortable: false,
+      filterable: false,
+      width: 200,
+      align: 'left',
+      render: (value: any, row: any) => (
+        <div 
+          className="text-sm text-muted-foreground max-w-[180px] truncate cursor-pointer hover:text-foreground transition-colors"
+          onMouseEnter={(e) => {
+            setHoveredNoteId(row.id);
+            setTooltipContent(row.notes);
+            const rect = e.currentTarget.getBoundingClientRect();
+            setTooltipPosition({ top: rect.top, left: rect.left });
+          }}
+          onMouseLeave={() => {
+            if (!isTooltipHovered) {
+              setHoveredNoteId(null);
+            }
+          }}
+        >
+          {row.notes || <span className="text-muted-foreground/50">Нет комментария</span>}
+        </div>
+      )
+    },
+    {
       id: 'actions',
       title: 'Действия',
       dataType: 'button',
@@ -183,6 +220,20 @@ const IncomingCallsList = () => {
       align: 'center',
       render: (_: any, row: any) => (
         <div className="flex items-center justify-center gap-1">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="cursor-pointer h-8 w-8"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedCallForNote(row);
+              setNoteText(row.notes || '');
+              setShowNoteDialog(true);
+            }}
+            title="Добавить комментарий"
+          >
+            <MessageSquare size={16} />
+          </Button>
           {!row.client && (
             <Button
               size="icon-sm"
@@ -190,25 +241,27 @@ const IncomingCallsList = () => {
               className="cursor-pointer h-8 w-8"
               onClick={(e) => {
                 e.stopPropagation();
-                handleConvertToClient(row);
+                setSelectedCall(row);
+                setShowQuickActionsDialog(true);
               }}
-              title="Создать клиента"
+              title="Быстрые действия"
             >
-              <UserPlus size={16} />
+              <Plus size={16} />
             </Button>
           )}
           {row.client && !row.application && (
             <Button
-              size="icon-sm"
+              size="sm"
               variant="outline"
-              className="cursor-pointer h-8 w-8"
+              className="cursor-pointer h-8"
               onClick={(e) => {
                 e.stopPropagation();
                 handleConvertToApplication(row);
               }}
               title="Создать заявку"
             >
-              <FileText size={16} />
+              <FileText size={16} className="mr-2" />
+              Заявка
             </Button>
           )}
           {row.application && (
@@ -271,6 +324,37 @@ const IncomingCallsList = () => {
     navigate(`/incoming-calls/${item.id}/convert-to-application`);
   };
 
+  const handleConvertToClientAndApplication = (item: any) => {
+    navigate(`/incoming-calls/${item.id}/convert-to-client-and-application`);
+  };
+
+  const handleQuickAction = (action: 'client' | 'client-application') => {
+    if (!selectedCall) return;
+    if (action === 'client') {
+      handleConvertToClient(selectedCall);
+    } else {
+      handleConvertToClientAndApplication(selectedCall);
+    }
+    setShowQuickActionsDialog(false);
+    setSelectedCall(null);
+  };
+
+  const handleSaveNote = async () => {
+    if (!selectedCallForNote) return;
+    try {
+      await api.post(`/incoming-calls/${selectedCallForNote.id}/notes`, { notes: noteText });
+      setCalls(prev => prev.map(call => 
+        call.id === selectedCallForNote.id ? { ...call, notes: noteText } : call
+      ));
+      notifySuccess('Комментарий сохранён', '');
+      setShowNoteDialog(false);
+      setSelectedCallForNote(null);
+      setNoteText('');
+    } catch (err: any) {
+      notifyError('Ошибка', err.message || 'Не удалось сохранить комментарий');
+    }
+  };
+
   // Обработка нового звонка через WebSocket
   useEffect(() => {
     const handleNewIncomingCall = (data: any) => {
@@ -309,16 +393,99 @@ const IncomingCallsList = () => {
         onFilter={handleFilter}
         pagination
         paginationConfig={{
-          page: currentPage,
-          pageSize,
-          totalItems: calls.length,
-          totalPages: Math.ceil(calls.length / pageSize)
+          pageSize: 20
         }}
-        onPageChange={setCurrentPage}
-        onPageSizeChange={setPageSize}
+        onPageChange={(page) => {
+          // Прокрутка к началу таблицы при смене страницы
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onPageSizeChange={(size) => {
+          // Сохранение размера страницы
+          localStorage.setItem('incoming-calls-pageSize', size.toString());
+        }}
         loading={loading}
         emptyMessage="Входящих звонков нет"
       />
+
+      {/* Quick Actions Dialog */}
+      <Dialog open={showQuickActionsDialog} onOpenChange={setShowQuickActionsDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Быстрые действия</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => handleQuickAction('client')}
+            >
+              <UserPlus size={16} className="mr-2" />
+              Создать клиента
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => handleQuickAction('client-application')}
+            >
+              <FileText size={16} className="mr-2" />
+              Создать клиента и заявку
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowQuickActionsDialog(false); setSelectedCall(null); }}>
+              Отмена
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Note Dialog */}
+      <Dialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Комментарий к звонку</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Телефон</Label>
+              <p className="font-medium">{selectedCallForNote?.phone}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="note">Комментарий</Label>
+              <Textarea
+                id="note"
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                rows={5}
+                placeholder="Введите комментарий..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowNoteDialog(false); setSelectedCallForNote(null); setNoteText(''); }}>
+              Отмена
+            </Button>
+            <Button onClick={handleSaveNote}>
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Note Tooltip */}
+      {hoveredNoteId && tooltipPosition && tooltipContent && (
+        <div 
+          className="fixed z-50 min-w-[180px] max-w-[300px] bg-popover text-popover-foreground border shadow-lg rounded p-2 text-sm whitespace-pre-wrap pointer-events-auto"
+          style={{ top: tooltipPosition.top - 10, left: tooltipPosition.left - 10 }}
+          onMouseEnter={() => setIsTooltipHovered(true)}
+          onMouseLeave={() => {
+            setIsTooltipHovered(false);
+            setHoveredNoteId(null);
+          }}
+        >
+          {tooltipContent}
+        </div>
+      )}
     </div>
   );
 };

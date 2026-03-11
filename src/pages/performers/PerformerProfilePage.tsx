@@ -1,7 +1,12 @@
 import { PageHeader } from "@/features/page-header"
-import { useParams, useNavigate, useSearchParams } from "react-router-dom"
+import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Pencil, Trash2, User, Mail, Phone, FileText, CheckCircle2, Circle } from "lucide-react"
+import { 
+  ArrowLeft, Pencil, Trash2, Mail, Phone, FileText, 
+  CheckCircle2, Circle, User, Calendar, Hash, 
+  Briefcase, CreditCard, Smartphone, Building2,
+  ShieldCheck, ShieldX, FileBadge
+} from "lucide-react"
 import { useNotification } from "@/features/notification"
 import { ConfirmDialog, useConfirm } from "@/shared/ui/confirm-dialog"
 import { api } from "@/shared/api/api.client"
@@ -12,20 +17,29 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PerformerNotes } from "@/features/performer-notes"
 import { PerformerDocuments } from "@/features/performer-documents"
+import { PerformerRequisites } from "@/features/performer-requisites"
 
 const PerformerProfilePage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   const { success: notifySuccess, error: notifyError } = useNotification()
   const [isDeleting, setIsDeleting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [performer, setPerformer] = useState<any>(null)
   const [passportData, setPassportData] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState<'requisites' | 'documents' | 'notes' | 'info'>('requisites')
 
   const { isOpen, setIsOpen, confirm, pendingConfirm, options } = useConfirm()
+  // Берем from из query параметра, state или используем '/performers' по умолчанию
+  const fromPage = searchParams.get('from') || (location.state as any)?.from || '/performers'
 
-  const fromPage = searchParams.get('from') || '/performers'
+  // Функция для перехода на редактирование с сохранением текущего пути
+  const handleEdit = () => {
+    // Передаем текущий путь просмотра как from для редактирования
+    navigate(`/performers/${id}/edit`, { state: { from: location.pathname + location.search } });
+  };
 
   const handleVerify = async () => {
     try {
@@ -113,28 +127,53 @@ const PerformerProfilePage = () => {
     )
   }
 
+  const InfoItem = ({ icon: Icon, label, value }: { icon: any, label: string, value: string | null }) => {
+    if (!value) return null
+    return (
+      <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+        <Icon className="h-5 w-5 text-muted-foreground mt-0.5" />
+        <div>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+          <p className="text-sm font-medium">{value}</p>
+        </div>
+      </div>
+    )
+  }
+
+  const SidebarButton = ({ tab, icon: Icon, label }: { tab: typeof activeTab, icon: any, label: string }) => (
+    <Button
+      variant={activeTab === tab ? 'default' : 'ghost'}
+      className={`w-full justify-start gap-2 h-11 px-3 cursor-pointer ${activeTab !== tab && 'hover:bg-muted'}`}
+      onClick={() => setActiveTab(tab)}
+    >
+      <Icon size={18} className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </Button>
+  )
+
   return (
     <div className="w-full h-full flex flex-col">
       <PageHeader name="Просмотр исполнителя" />
-      <div className="flex-1 overflow-auto p-[12px] space-y-4">
-        {/* Кнопки действий */}
-        <div className="flex gap-2">
+      
+      <div className="flex-1 overflow-auto p-[12px]">
+        {/* Actions Bar */}
+        <div className="flex gap-2 mb-4">
           <Button variant="outline" onClick={() => navigate(fromPage)}>
             <ArrowLeft size={16} className="mr-2" />
             Назад
           </Button>
-          <Button variant="outline" onClick={() => navigate(`/performers/${id}/edit?from=${encodeURIComponent(fromPage)}`)}>
+          <Button variant="outline" onClick={handleEdit}>
             <Pencil size={16} className="mr-2" />
             Редактировать
           </Button>
           {performer.is_verified ? (
             <Button variant="outline" onClick={handleUnverify}>
-              <Circle size={16} className="mr-2" />
+              <ShieldX size={16} className="mr-2" />
               Снять проверку
             </Button>
           ) : (
             <Button variant="default" onClick={handleVerify}>
-              <CheckCircle2 size={16} className="mr-2" />
+              <ShieldCheck size={16} className="mr-2" />
               Проверить
             </Button>
           )}
@@ -144,114 +183,138 @@ const PerformerProfilePage = () => {
           </Button>
         </div>
 
-        {/* Основная информация */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Основная информация</span>
-              <div className="flex gap-2">
-                <Badge className={performer.source === 'APP' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}>
-                  {performer.source === 'APP' ? 'Приложение' : 'CRM'}
-                </Badge>
-                <Badge className={performer.is_verified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                  {performer.is_verified ? (
-                    <span className="flex items-center gap-1"><CheckCircle2 size={12} /> Проверен</span>
-                  ) : (
-                    <span className="flex items-center gap-1"><Circle size={12} /> Не проверен</span>
-                  )}
-                </Badge>
-                <Badge className={performer.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                  {performer.is_active ? 'Активен' : 'Не активен'}
-                </Badge>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-16 w-16">
+        {/* Header Card with Profile Info */}
+        <Card className="mb-4">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-6">
+              <Avatar className="h-24 w-24">
                 {performer.avatar && <AvatarImage src={performer.avatar} alt={performer.last_name} />}
-                <AvatarFallback>{performer.last_name[0]}{performer.first_name[0]}</AvatarFallback>
+                <AvatarFallback className="text-2xl">
+                  {performer.last_name[0]}{performer.first_name[0]}
+                </AvatarFallback>
               </Avatar>
-              <div>
-                <p className="text-lg font-semibold">
-                  {performer.last_name} {performer.first_name} {performer.middle_name || ''}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {performer.professions?.map((p: any) => p.name).join(', ') || 'Без профессии'}
-                </p>
+
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h2 className="text-2xl font-bold">
+                      {performer.last_name} {performer.first_name} {performer.middle_name || ''}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Briefcase className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        {performer.professions?.map((p: any) => p.name).join(', ') || 'Без профессии'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Badge variant={performer.source === 'APP' ? 'default' : 'secondary'} className="gap-1">
+                      <Smartphone size={12} />
+                      {performer.source === 'APP' ? 'Приложение' : 'CRM'}
+                    </Badge>
+                    <Badge variant={performer.is_verified ? 'default' : 'secondary'} className="gap-1 bg-green-100 text-green-800">
+                      {performer.is_verified ? <CheckCircle2 size={12} /> : <Circle size={12} />}
+                      {performer.is_verified ? 'Проверен' : 'Не проверен'}
+                    </Badge>
+                    <Badge variant={performer.is_active ? 'default' : 'destructive'} className="gap-1">
+                      {performer.is_active ? 'Активен' : 'Не активен'}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <InfoItem icon={Mail} label="Email" value={performer.email} />
+                  <InfoItem icon={Phone} label="Телефон" value={performer.phone} />
+                  <InfoItem icon={Hash} label="ID" value={`#${performer.id}`} />
+                </div>
               </div>
             </div>
-
-            <div className="space-y-2">
-              {performer.email && (
-                <div className="flex items-center gap-2">
-                  <Mail size={16} className="text-muted-foreground" />
-                  <span>{performer.email}</span>
-                </div>
-              )}
-              {performer.phone && (
-                <div className="flex items-center gap-2">
-                  <Phone size={16} className="text-muted-foreground" />
-                  <span>{performer.phone}</span>
-                </div>
-              )}
-            </div>
           </CardContent>
         </Card>
 
-        {/* Паспортные данные */}
-        {passportData && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText size={20} />
-                Паспортные данные
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
-              {passportData.passport_series && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Серия паспорта</p>
-                  <p className="font-medium">{passportData.passport_series}</p>
-                </div>
-              )}
-              {passportData.passport_number && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Номер паспорта</p>
-                  <p className="font-medium">{passportData.passport_number}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Заметки */}
-        <PerformerNotes performerId={performer.id} />
-
-        {/* Документы */}
-        <PerformerDocuments performerId={performer.id} />
-
-        {/* Мета-информация */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Мета-информация</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">ID исполнителя</p>
-              <p className="font-mono">#{performer.id}</p>
+        {/* Content Sections - Sidebar Layout */}
+        <div className="flex gap-4 mt-4 min-h-[500px]">
+          {/* Sidebar */}
+          <div className="w-56 shrink-0">
+            <div className="flex flex-col gap-1 p-2 bg-muted/30 rounded-lg border">
+              <SidebarButton tab="requisites" icon={CreditCard} label="Реквизиты" />
+              <SidebarButton tab="documents" icon={FileBadge} label="Документы" />
+              <SidebarButton tab="notes" icon={FileText} label="Заметки" />
+              <SidebarButton tab="info" icon={User} label="Информация" />
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Дата создания</p>
-              <p className="font-medium">
-                {new Date(performer.created_at).toLocaleDateString('ru-RU', {
-                  day: '2-digit', month: '2-digit', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit'
-                })}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Content Area */}
+          <div className="flex-1 min-w-0">
+            {activeTab === 'requisites' && <PerformerRequisites performerId={performer.id} />}
+            {activeTab === 'documents' && <PerformerDocuments performerId={performer.id} />}
+            {activeTab === 'notes' && <PerformerNotes performerId={performer.id} />}
+            {activeTab === 'info' && (
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Паспортные данные */}
+                {passportData && (passportData.passport_series || passportData.passport_number) && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <FileBadge size={18} />
+                        Паспортные данные
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {passportData.passport_series && (
+                        <div className="flex justify-between items-center p-2 rounded bg-muted/50">
+                          <span className="text-sm text-muted-foreground">Серия паспорта</span>
+                          <span className="text-sm font-medium">{passportData.passport_series}</span>
+                        </div>
+                      )}
+                      {passportData.passport_number && (
+                        <div className="flex justify-between items-center p-2 rounded bg-muted/50">
+                          <span className="text-sm text-muted-foreground">Номер паспорта</span>
+                          <span className="text-sm font-medium">{passportData.passport_number}</span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Мета-информация */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Calendar size={18} />
+                      Мета-информация
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between items-center p-2 rounded bg-muted/50">
+                      <span className="text-sm text-muted-foreground">ID исполнителя</span>
+                      <span className="text-sm font-mono">#{performer.id}</span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 rounded bg-muted/50">
+                      <span className="text-sm text-muted-foreground">Дата создания</span>
+                      <span className="text-sm font-medium">
+                        {new Date(performer.created_at).toLocaleDateString('ru-RU', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 rounded bg-muted/50">
+                      <span className="text-sm text-muted-foreground">Дата обновления</span>
+                      <span className="text-sm font-medium">
+                        {new Date(performer.updated_at).toLocaleDateString('ru-RU', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <ConfirmDialog

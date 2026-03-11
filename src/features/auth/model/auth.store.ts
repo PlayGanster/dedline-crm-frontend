@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 interface User {
   id: number;
   email: string;
@@ -37,7 +39,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const token = get().token;
       if (token) {
-        await fetch('http://localhost:3000/auth/logout', {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

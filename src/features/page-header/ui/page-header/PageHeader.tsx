@@ -4,7 +4,8 @@ import { PageHeaderProvider } from "../../lib/context/PageHeaderContext"
 
 const PageHeader: React.FC<PageHeaderType> = ({
     name,
-    children
+    children,
+    actions
 }) => {
     return (
         <PageHeaderProvider pageName={name}>
@@ -30,6 +31,7 @@ const PageHeader: React.FC<PageHeaderType> = ({
                     {name}
                 </p>
                 <div className="flex items-center gap-2">
+                    {actions}
                     {children}
                     <PageHeaderError />
                 </div>
