@@ -155,8 +155,8 @@ const ClientProfilePage = () => {
                   {client.type === 'INDIVIDUAL' ? 'ФИО' : 'Название компании'}
                 </p>
                 <p className="font-medium">
-                  {client.type === 'INDIVIDUAL' 
-                    ? `${client.last_name} ${client.first_name} ${client.middle_name || ''}`.trim()
+                  {client.type === 'INDIVIDUAL'
+                    ? client.fio
                     : client.company_name}
                 </p>
               </div>
@@ -234,34 +234,8 @@ const ClientProfilePage = () => {
           </Card>
         )}
 
-        {/* Детали для физ. лиц */}
-        {client.type === 'INDIVIDUAL' && (client.passport_series || client.passport_number) && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Паспортные данные</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
-              {client.passport_series && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Серия паспорта</p>
-                  <p className="font-medium">{client.passport_series}</p>
-                </div>
-              )}
-              {client.passport_number && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Номер паспорта</p>
-                  <p className="font-medium">{client.passport_number}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
         {/* Заметки */}
         <ClientNotes clientId={client.id} />
-
-        {/* Документы */}
-        <ClientDocuments clientId={client.id} />
 
         {/* Мета-информация */}
         <Card>

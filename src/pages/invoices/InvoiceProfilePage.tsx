@@ -152,7 +152,7 @@ const InvoiceProfilePage = () => {
               {invoice.client.type === 'LEGAL_ENTITY' ? <Building2 size={20} className="text-muted-foreground mt-1" /> : <User size={20} className="text-muted-foreground mt-1" />}
               <div className="space-y-1">
                 <p className="font-medium">
-                  {invoice.client.type === 'LEGAL_ENTITY' ? invoice.client.company_name : `${invoice.client.last_name} ${invoice.client.first_name}`}
+                  {invoice.client.type === 'LEGAL_ENTITY' ? invoice.client.company_name : invoice.client.fio}
                 </p>
                 {invoice.client.email && <p className="text-sm text-muted-foreground">{invoice.client.email}</p>}
                 {invoice.client.phone && <p className="text-sm text-muted-foreground">{invoice.client.phone}</p>}

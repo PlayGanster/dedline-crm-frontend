@@ -1,10 +1,10 @@
 import { PageHeader } from "@/features/page-header"
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
-import { 
-  ArrowLeft, Pencil, Trash2, Mail, Phone, FileText, 
-  CheckCircle2, Circle, User, Calendar, Hash, 
-  Briefcase, CreditCard, Smartphone, Building2,
+import {
+  ArrowLeft, Pencil, Trash2, Mail, Phone, FileText,
+  CheckCircle2, Circle, User, Calendar, Hash,
+  Briefcase, CreditCard, Smartphone, Building2, MapPin,
   ShieldCheck, ShieldX, FileBadge
 } from "lucide-react"
 import { useNotification } from "@/features/notification"
@@ -223,9 +223,10 @@ const PerformerProfilePage = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <InfoItem icon={Mail} label="Email" value={performer.email} />
                   <InfoItem icon={Phone} label="Телефон" value={performer.phone} />
+                  <InfoItem icon={MapPin} label="Город" value={performer.city} />
                   <InfoItem icon={Hash} label="ID" value={`#${performer.id}`} />
                 </div>
               </div>

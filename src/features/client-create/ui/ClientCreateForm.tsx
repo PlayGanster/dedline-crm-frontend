@@ -7,19 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ClientDocuments } from "@/features/client-documents"
+import { CompanyCheckButton } from "@/features/company-check"
+import { User, Building2, Mail, Phone } from "lucide-react"
 
 interface ClientFormData {
   type: 'INDIVIDUAL' | 'LEGAL_ENTITY';
   email?: string;
   phone?: string;
-  first_name?: string;
-  last_name?: string;
-  middle_name?: string;
-  passport_series?: string;
-  passport_number?: string;
+  fio?: string;
   company_name?: string;
   inn?: string;
   kpp?: string;
@@ -32,11 +29,7 @@ const initialFormData: ClientFormData = {
   type: 'INDIVIDUAL',
   email: '',
   phone: '',
-  first_name: '',
-  last_name: '',
-  middle_name: '',
-  passport_series: '',
-  passport_number: '',
+  fio: '',
   company_name: '',
   inn: '',
   kpp: '',
@@ -51,6 +44,7 @@ const ClientCreateForm = () => {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<ClientFormData>(initialFormData)
   const [createdClientId, setCreatedClientId] = useState<number | null>(null)
+  const [activeTab, setActiveTab] = useState<string>('individual')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,7 +55,6 @@ const ClientCreateForm = () => {
       const clientId = response.id
       setCreatedClientId(clientId)
       notifySuccess('Клиент создан', 'Клиент успешно добавлен в систему')
-      // Не делаем редирект, показываем блок с документами
     } catch (err: any) {
       console.error('[Client] Error:', err)
       notifyError('Ошибка', err.message || 'Не удалось создать клиента')
@@ -70,134 +63,138 @@ const ClientCreateForm = () => {
     }
   }
 
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    setFormData({ ...formData, type: value === 'individual' ? 'INDIVIDUAL' : 'LEGAL_ENTITY' })
+  }
+
+  const handleCompanySelect = (data: { company_name: string; inn: string; ogrn: string; kpp?: string; legal_address?: string }) => {
+    setFormData({
+      ...formData,
+      company_name: data.company_name,
+      inn: data.inn,
+      ogrn: data.ogrn,
+      kpp: data.kpp || '',
+      legal_address: data.legal_address || '',
+    })
+  }
+
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="flex-1 overflow-auto p-[12px]">
-        <form id="client-form" onSubmit={handleSubmit}>
-          <Card className="mb-4">
-            <CardHeader>
-              <CardTitle>Основная информация</CardTitle>
+      <div className="flex-1 overflow-auto p-6">
+        <form id="client-form" onSubmit={handleSubmit} className="space-y-4 flex flex-col min-h-full">
+          {/* Основная информация */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Основная информация
+              </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Тип клиента</Label>
-                <RadioGroup
-                  value={formData.type}
-                  onValueChange={(value) => setFormData({ ...formData, type: value as 'INDIVIDUAL' | 'LEGAL_ENTITY' })}
-                  className="flex gap-4"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="INDIVIDUAL" id="individual" />
-                    <Label htmlFor="individual">Физ. лицо</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="LEGAL_ENTITY" id="legal" />
-                    <Label htmlFor="legal">Юр. лицо</Label>
-                  </div>
-                </RadioGroup>
-              </div>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label>Тип клиента</Label>
+                  <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="individual" className="gap-1 text-xs sm:text-sm">
+                        <User className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Физ. лицо</span>
+                        <span className="sm:hidden">Физ.</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="legal" className="gap-1 text-xs sm:text-sm">
+                        <Building2 className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Юр. лицо</span>
+                        <span className="sm:hidden">Юр.</span>
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
 
-              <div className="space-y-2">
-                <Label>Статус</Label>
-                <Select
-                  value={formData.is_active ? 'active' : 'inactive'}
-                  onValueChange={(value) => setFormData({ ...formData, is_active: value === 'active' })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Активен</SelectItem>
-                    <SelectItem value="inactive">Не активен</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email-create" className="flex items-center gap-1">
+                    <Mail className="h-3.5 w-3.5" />
+                    Email
+                  </Label>
+                  <Input
+                    id="email-create"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="example@mail.ru"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="example@mail.ru"
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone-create" className="flex items-center gap-1">
+                    <Phone className="h-3.5 w-3.5" />
+                    Телефон
+                  </Label>
+                  <Input
+                    id="phone-create"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="+7 (999) 000-00-00"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="phone">Телефон</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+7 (999) 000-00-00"
-                />
+                <div className="space-y-2">
+                  <Label>Статус</Label>
+                  <Tabs value={formData.is_active ? 'active' : 'inactive'} onValueChange={(v) => setFormData({ ...formData, is_active: v === 'active' })} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="active">Активен</TabsTrigger>
+                      <TabsTrigger value="inactive">Не активен</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {formData.type === 'INDIVIDUAL' ? (
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle>Данные физического лица</CardTitle>
+          {/* Данные физического лица */}
+          {formData.type === 'INDIVIDUAL' && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Данные физического лица
+                </CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="last_name">Фамилия</Label>
-                  <Input
-                    id="last_name"
-                    value={formData.last_name}
-                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="first_name">Имя</Label>
-                  <Input
-                    id="first_name"
-                    value={formData.first_name}
-                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="middle_name">Отчество</Label>
-                  <Input
-                    id="middle_name"
-                    value={formData.middle_name}
-                    onChange={(e) => setFormData({ ...formData, middle_name: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="passport_series">Серия паспорта</Label>
-                  <Input
-                    id="passport_series"
-                    value={formData.passport_series}
-                    onChange={(e) => setFormData({ ...formData, passport_series: e.target.value })}
-                    placeholder="4501"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="passport_number">Номер паспорта</Label>
-                  <Input
-                    id="passport_number"
-                    value={formData.passport_number}
-                    onChange={(e) => setFormData({ ...formData, passport_number: e.target.value })}
-                    placeholder="123456"
-                  />
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="fio">ФИО</Label>
+                    <Input
+                      id="fio"
+                      value={formData.fio}
+                      onChange={(e) => setFormData({ ...formData, fio: e.target.value })}
+                      placeholder="Иванов Иван Иванович"
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          ) : (
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle>Данные юридического лица</CardTitle>
+          )}
+
+          {/* Данные юридического лица */}
+          {formData.type === 'LEGAL_ENTITY' && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4" />
+                    Данные юридического лица
+                  </div>
+                  <CompanyCheckButton
+                    inn={formData.inn}
+                    companyName={formData.company_name}
+                    onCompanySelect={handleCompanySelect}
+                  />
+                </CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4">
-                <div className="space-y-2 col-span-2">
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
                   <Label htmlFor="company_name">Название компании</Label>
                   <Input
                     id="company_name"
@@ -207,37 +204,39 @@ const ClientCreateForm = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="inn">ИНН</Label>
-                  <Input
-                    id="inn"
-                    value={formData.inn}
-                    onChange={(e) => setFormData({ ...formData, inn: e.target.value })}
-                    placeholder="7701234567"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="inn">ИНН</Label>
+                    <Input
+                      id="inn"
+                      value={formData.inn}
+                      onChange={(e) => setFormData({ ...formData, inn: e.target.value })}
+                      placeholder="7701234567"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="kpp">КПП</Label>
+                    <Input
+                      id="kpp"
+                      value={formData.kpp}
+                      onChange={(e) => setFormData({ ...formData, kpp: e.target.value })}
+                      placeholder="770101001"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="ogrn">ОГРН</Label>
+                    <Input
+                      id="ogrn"
+                      value={formData.ogrn}
+                      onChange={(e) => setFormData({ ...formData, ogrn: e.target.value })}
+                      placeholder="1027700123456"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="kpp">КПП</Label>
-                  <Input
-                    id="kpp"
-                    value={formData.kpp}
-                    onChange={(e) => setFormData({ ...formData, kpp: e.target.value })}
-                    placeholder="770101001"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ogrn">ОГРН</Label>
-                  <Input
-                    id="ogrn"
-                    value={formData.ogrn}
-                    onChange={(e) => setFormData({ ...formData, ogrn: e.target.value })}
-                    placeholder="1027700123456"
-                  />
-                </div>
-
-                <div className="space-y-2 col-span-2">
                   <Label htmlFor="legal_address">Юридический адрес</Label>
                   <Textarea
                     id="legal_address"
@@ -252,27 +251,19 @@ const ClientCreateForm = () => {
           )}
 
           {/* Кнопки действий */}
-          {!createdClientId ? (
-            <div className="flex gap-2 justify-end mb-4">
-              <Button type="button" variant="outline" onClick={() => navigate('/clients')}>
-                Отмена
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Создание...' : 'Создать'}
-              </Button>
-            </div>
-          ) : (
-            <div className="flex gap-2 justify-end mb-4">
-              <Button variant="outline" onClick={() => navigate('/clients')}>
-                Готово
-              </Button>
-            </div>
-          )}
+          <div className="flex justify-end gap-2 mt-auto pt-4 bg-background border-t">
+            <Button type="button" variant="outline" onClick={() => navigate('/clients')}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Создание...' : 'Создать'}
+            </Button>
+          </div>
         </form>
 
         {/* Документы */}
         {createdClientId && (
-          <div className="mt-4">
+          <div className="mt-6">
             <ClientDocuments clientId={createdClientId} />
           </div>
         )}

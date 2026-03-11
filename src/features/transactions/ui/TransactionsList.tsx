@@ -16,7 +16,7 @@ interface Transaction {
   description?: string | null;
   transaction_date: string;
   created_at: string;
-  client?: { id: number; first_name: string; last_name: string; company_name?: string | null; type?: string } | null;
+  client?: { id: number; fio: string; company_name?: string | null; type?: string } | null;
   performer?: { id: number; first_name: string; last_name: string; avatar?: string | null } | null;
   application?: { id: number; title: string } | null;
 }
@@ -120,7 +120,7 @@ const TransactionsList = () => {
       render: (_: any, row: any) => (
         row.client ? (
           <p className="text-sm">
-            {row.client.type === 'LEGAL_ENTITY' ? row.client.company_name : `${row.client.last_name} ${row.client.first_name}`}
+            {row.client.type === 'LEGAL_ENTITY' ? row.client.company_name : row.client.fio}
           </p>
         ) : '—'
       )

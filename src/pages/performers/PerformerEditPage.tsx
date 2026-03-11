@@ -7,11 +7,12 @@ import { PageHeader } from "@/features/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PerformerDocuments } from "@/features/performer-documents"
 import { PerformerRequisites } from "@/features/performer-requisites"
-import { ArrowLeft } from "lucide-react"
+import { User, Briefcase, CreditCard, FileText, Upload, X, MapPin } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { CitySelector } from "@/components/ui/city-selector"
 
 const PerformerEditPage = () => {
   const { id } = useParams<{ id: string }>()
@@ -26,9 +27,9 @@ const PerformerEditPage = () => {
     email: '', phone: '', first_name: '', last_name: '', middle_name: '',
     source: 'CRM' as 'CRM' | 'APP', is_active: true, is_verified: false,
     professions: '', passport_series: '', passport_number: '', password: '',
+    city: '',
   })
   const fileInputRef = useRef<HTMLInputElement>(null)
-  // Берем from из query параметра, state или используем '/performers' по умолчанию
   const fromPage = searchParams.get('from') || (location.state as any)?.from || '/performers'
 
   useEffect(() => {
@@ -42,6 +43,7 @@ const PerformerEditPage = () => {
             is_verified: data.is_verified, professions: data.professions?.map((p: any) => p.name).join(', ') || '',
             passport_series: passport?.passport_series || '', passport_number: passport?.passport_number || '',
             password: '',
+            city: data.city || '',
           })
         })
       }).catch(() => notifyError('Ошибка', 'Не удалось загрузить исполнителя'))
@@ -53,10 +55,9 @@ const PerformerEditPage = () => {
     if (!id) return
     try {
       setLoading(true)
-      const data: any = { 
-        ...formData, 
+      const data: any = {
+        ...formData,
         professions: formData.professions.split(',').map((s: string) => s.trim()).filter(Boolean),
-        // Не отправляем is_verified - это поле управляется отдельно через кнопки проверки
         is_verified: undefined,
       }
       await api.put(`/performers/${id}`, data)
@@ -87,15 +88,8 @@ const PerformerEditPage = () => {
       setUploadingAvatar(true)
       const formData = new FormData()
       formData.append('avatar', file)
-      
-      console.log('[Avatar] Uploading file:', file.name, file.size, file.type)
-      console.log('[Avatar] API URL:', import.meta.env.VITE_API_URL)
-      console.log('[Avatar] Request URL:', `/performers/${id}/avatar`)
 
       const response = await api.put(`/performers/${id}/avatar`, formData)
-      
-      console.log('[Avatar] Response:', response)
-
       setAvatarUrl(response.avatar)
       notifySuccess('Аватарка загружена', 'Аватарка исполнителя успешно обновлена')
     } catch (err: any) {
@@ -109,32 +103,62 @@ const PerformerEditPage = () => {
     }
   }
 
+  const handleRemoveAvatar = async () => {
+    if (!id) return
+    try {
+      await api.put(`/performers/${id}`, { avatar: null })
+      setAvatarUrl(null)
+      notifySuccess('Аватарка удалена', '')
+    } catch (err: any) {
+      notifyError('Ошибка', err.message || 'Не удалось удалить аватарку')
+    }
+  }
+
   return (
     <div className="w-full h-full flex flex-col">
-      <PageHeader name="Редактирование исполнителя" />
-      
-      <div className="flex-1 overflow-auto p-[12px]">
-        {/* Actions Bar */}
-        <div className="flex gap-2 mb-4">
-          <Button variant="outline" onClick={() => navigate(fromPage)}>
-            <ArrowLeft size={16} className="mr-2" />
-            Отмена
-          </Button>
-          <Button type="submit" form="performer-form" disabled={loading}>
-            {loading ? 'Сохранение...' : 'Сохранить'}
-          </Button>
-        </div>
-        <form id="performer-form" onSubmit={handleSubmit} className="space-y-4">
+      <PageHeader
+        name="Редактирование исполнителя"
+      />
+      <div className="flex-1 overflow-auto p-6">
+        <form id="performer-form" onSubmit={handleSubmit} className="space-y-4 flex flex-col min-h-full">
+          {/* Основная информация с аватаркой */}
           <Card>
-            <CardHeader><CardTitle>Основная информация</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
-              {/* Avatar Upload */}
-              <div className="col-span-2 flex items-center gap-4">
-                <Avatar className="h-20 w-20">
-                  {avatarUrl && <AvatarImage src={avatarUrl} alt={formData.last_name} />}
-                  <AvatarFallback className="text-xl">{formData.last_name[0]}{formData.first_name[0]}</AvatarFallback>
-                </Avatar>
-                <div className="space-y-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Основная информация
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col md:flex-row gap-6">
+                <div className="relative flex-shrink-0">
+                  <Avatar className="h-24 w-24">
+                    {avatarUrl && <AvatarImage src={avatarUrl} alt={formData.last_name} />}
+                    <AvatarFallback className="text-2xl">{formData.last_name[0]}{formData.first_name[0]}</AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-2 -right-2 flex gap-1">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8 cursor-pointer"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingAvatar}
+                    >
+                      <Upload size={14} />
+                    </Button>
+                    {avatarUrl && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-8 w-8 cursor-pointer"
+                        onClick={handleRemoveAvatar}
+                      >
+                        <X size={14} />
+                      </Button>
+                    )}
+                  </div>
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -142,58 +166,186 @@ const PerformerEditPage = () => {
                     accept="image/*"
                     className="hidden"
                   />
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingAvatar}
-                    >
-                      {uploadingAvatar ? 'Загрузка...' : 'Загрузить аватарку'}
-                    </Button>
-                    {avatarUrl && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={async () => {
-                          setAvatarUrl(null)
-                          await api.put(`/performers/${id}`, { avatar: null })
-                          notifySuccess('Аватарка удалена', '')
-                        }}
-                      >
-                        Удалить
-                      </Button>
-                    )}
+                </div>
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label>Источник</Label>
+                    <Tabs value={formData.source} onValueChange={(v) => setFormData({...formData, source: v as 'CRM'|'APP'})} className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="CRM">CRM</TabsTrigger>
+                        <TabsTrigger value="APP">Приложение</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    JPEG, PNG, GIF, WebP до 5MB
-                  </p>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email-edit">Email</Label>
+                    <Input 
+                      id="email-edit"
+                      value={formData.email} 
+                      onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="phone-edit">Телефон</Label>
+                    <Input
+                      id="phone-edit"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Город</Label>
+                    <CitySelector
+                      value={formData.city}
+                      onChange={(value) => setFormData({...formData, city: value})}
+                      placeholder="Выберите город"
+                    />
+                  </div>
+
+                  {formData.source === 'APP' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="password-edit">Пароль</Label>
+                      <Input 
+                        id="password-edit"
+                        type="password" 
+                        value={formData.password} 
+                        onChange={(e) => setFormData({...formData, password: e.target.value})}
+                        placeholder="Оставьте пустым, чтобы не менять"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
-
-              <div className="space-y-2"><Label>Источник</Label><RadioGroup value={formData.source} onValueChange={(v) => setFormData({...formData, source: v as 'CRM'|'APP'})} className="flex gap-4"><div className="flex items-center space-x-2"><RadioGroupItem value="CRM" id="crm"/><Label htmlFor="crm">CRM</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="APP" id="app"/><Label htmlFor="app">Приложение</Label></div></RadioGroup></div>
-              <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})}/></div>
-              <div className="space-y-2"><Label htmlFor="phone">Телефон</Label><Input id="phone" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})}/></div>
-              {formData.source === 'APP' && (<div className="space-y-2"><Label htmlFor="password">Пароль</Label><Input id="password" type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} placeholder="Оставьте пустым, чтобы не менять"/></div>)}
-              <div className="space-y-2"><Label htmlFor="last_name">Фамилия</Label><Input id="last_name" value={formData.last_name} onChange={(e) => setFormData({...formData, last_name: e.target.value})}/></div>
-              <div className="space-y-2"><Label htmlFor="first_name">Имя</Label><Input id="first_name" value={formData.first_name} onChange={(e) => setFormData({...formData, first_name: e.target.value})}/></div>
-              <div className="space-y-2"><Label htmlFor="middle_name">Отчество</Label><Input id="middle_name" value={formData.middle_name} onChange={(e) => setFormData({...formData, middle_name: e.target.value})}/></div>
-              <div className="space-y-2 col-span-2"><Label htmlFor="professions">Профессии (через запятую)</Label><Input id="professions" value={formData.professions} onChange={(e) => setFormData({...formData, professions: e.target.value})}/></div>
-              <div className="space-y-2"><Label htmlFor="passport_series">Серия паспорта</Label><Input id="passport_series" value={formData.passport_series} onChange={(e) => setFormData({...formData, passport_series: e.target.value})}/></div>
-              <div className="space-y-2"><Label htmlFor="passport_number">Номер паспорта</Label><Input id="passport_number" value={formData.passport_number} onChange={(e) => setFormData({...formData, passport_number: e.target.value})}/></div>
             </CardContent>
           </Card>
+
+          {/* Персональные данные */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Персональные данные
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="last_name-edit">Фамилия</Label>
+                  <Input 
+                    id="last_name-edit"
+                    value={formData.last_name} 
+                    onChange={(e) => setFormData({...formData, last_name: e.target.value})}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="first_name-edit">Имя</Label>
+                  <Input 
+                    id="first_name-edit"
+                    value={formData.first_name} 
+                    onChange={(e) => setFormData({...formData, first_name: e.target.value})}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="middle_name-edit">Отчество</Label>
+                  <Input 
+                    id="middle_name-edit"
+                    value={formData.middle_name} 
+                    onChange={(e) => setFormData({...formData, middle_name: e.target.value})}
+                  />
+                </div>
+
+                <div className="space-y-2 lg:col-span-1">
+                  <Label htmlFor="professions-edit">Профессии</Label>
+                  <Input 
+                    id="professions-edit"
+                    value={formData.professions} 
+                    onChange={(e) => setFormData({...formData, professions: e.target.value})}
+                    placeholder="Электрик, Сантехник"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Паспортные данные */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Паспортные данные
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="passport_series-edit">Серия паспорта</Label>
+                  <Input 
+                    id="passport_series-edit"
+                    value={formData.passport_series} 
+                    onChange={(e) => setFormData({...formData, passport_series: e.target.value})}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="passport_number-edit">Номер паспорта</Label>
+                  <Input 
+                    id="passport_number-edit"
+                    value={formData.passport_number} 
+                    onChange={(e) => setFormData({...formData, passport_number: e.target.value})}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Реквизиты */}
+          {id && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Briefcase className="h-4 w-4" />
+                  Реквизиты
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <PerformerRequisites performerId={parseInt(id)} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Документы */}
+          {id && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Документы
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <PerformerDocuments performerId={parseInt(id)} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Кнопки действий */}
+          <div className="flex justify-end gap-2 mt-auto pt-4 bg-background border-t">
+            <Button type="button" variant="outline" onClick={() => navigate(fromPage)}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Сохранение...' : 'Сохранить'}
+            </Button>
+          </div>
         </form>
-        {id && (
-          <>
-            <div className="mt-4"><PerformerRequisites performerId={parseInt(id)} /></div>
-            <div className="mt-4"><PerformerDocuments performerId={parseInt(id)} /></div>
-          </>
-        )}
       </div>
     </div>
   )
 }
+
 export default PerformerEditPage

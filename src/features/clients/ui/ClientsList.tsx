@@ -13,9 +13,7 @@ interface Client {
   type: 'INDIVIDUAL' | 'LEGAL_ENTITY';
   email?: string | null;
   phone?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  middle_name?: string | null;
+  fio?: string | null;
   company_name?: string | null;
   inn?: string | null;
   kpp?: string | null;
@@ -89,8 +87,8 @@ const ClientsList = () => {
           </div>
           <div>
             <p className="text-sm font-medium">
-              {row.type === 'INDIVIDUAL' 
-                ? `${row.last_name} ${row.first_name} ${row.middle_name || ''}`.trim()
+              {row.type === 'INDIVIDUAL'
+                ? row.fio || '—'
                 : row.company_name || '—'}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -250,9 +248,7 @@ const ClientsList = () => {
         type: client.type,
         email: client.email,
         phone: client.phone,
-        first_name: client.first_name,
-        last_name: client.last_name,
-        middle_name: client.middle_name,
+        fio: client.fio,
         company_name: client.company_name,
         inn: client.inn,
         kpp: client.kpp,
@@ -262,8 +258,8 @@ const ClientsList = () => {
         is_active: client.is_active,
         created_at: client.created_at,
         updated_at: client.updated_at,
-        full_name: client.type === 'INDIVIDUAL' 
-          ? `${client.last_name} ${client.first_name} ${client.middle_name || ''}`.trim()
+        full_name: client.type === 'INDIVIDUAL'
+          ? client.fio || ''
           : client.company_name || '',
       }));
 
@@ -317,7 +313,7 @@ const ClientsList = () => {
       },
       {
         title: 'Удалить клиента?',
-        description: `Вы уверены что хотите удалить ${item.type === 'INDIVIDUAL' ? `${item.last_name} ${item.first_name}` : item.company_name}? Это действие нельзя отменить.`,
+        description: `Вы уверены что хотите удалить ${item.type === 'INDIVIDUAL' ? item.fio : item.company_name}? Это действие нельзя отменить.`,
         confirmText: 'Удалить',
         cancelText: 'Отмена',
         variant: 'destructive',

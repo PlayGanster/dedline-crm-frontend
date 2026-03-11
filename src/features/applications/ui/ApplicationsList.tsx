@@ -17,12 +17,12 @@ interface Application {
   status: 'NEW' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   amount: string | null;
   performers_count: number;
+  city?: string;
   created_at: string;
   updated_at: string;
   client: {
     id: number;
-    first_name: string;
-    last_name: string;
+    fio: string;
     company_name?: string | null;
     type?: 'INDIVIDUAL' | 'LEGAL_ENTITY';
   };
@@ -33,7 +33,12 @@ interface Application {
       first_name: string;
       last_name: string;
       avatar?: string | null;
+      city?: string;
     };
+  }[];
+  tasks?: {
+    id: number;
+    quantity: number;
   }[];
 }
 
@@ -101,10 +106,21 @@ const ApplicationsList = () => {
       render: (_: any, row: any) => (
         <div>
           <p className="text-sm font-medium">
-            {row.client.type === 'LEGAL_ENTITY' ? row.client.company_name : `${row.client.last_name} ${row.client.first_name}`}
+            {row.client.type === 'LEGAL_ENTITY' ? row.client.company_name : row.client.fio}
           </p>
         </div>
       )
+    },
+    {
+      id: 'city',
+      title: 'Город',
+      dataType: 'string',
+      sortable: true,
+      filterable: true,
+      searchable: true,
+      width: 150,
+      align: 'left',
+      render: (value, row) => row.city || '—'
     },
     {
       id: 'status',
@@ -141,11 +157,16 @@ const ApplicationsList = () => {
       searchable: false,
       width: 120,
       align: 'center',
-      render: (_: any, row: any) => (
-        <span className="text-sm">
-          {row.performers?.length || 0} / {row.performers_count}
-        </span>
-      )
+      render: (_: any, row: any) => {
+        const maxPerformers = row.tasks?.reduce((sum: number, task: any) => sum + (task.quantity || 1), 0) || row.performers_count || 1
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-sm font-medium">
+              {row.performers?.length || 0} / {maxPerformers}
+            </span>
+          </div>
+        )
+      }
     },
     {
       id: 'created_at',
@@ -226,7 +247,26 @@ const ApplicationsList = () => {
       setLoading(true);
       const response = await api.get<Application[]>('/applications');
 
-      const transformedApplications = response.map(app => ({
+      // Загружаем задачи и исполнителей для каждой заявки
+      const applicationsWithTasks = await Promise.all(
+        response.map(async (app) => {
+          try {
+            const [tasks, performersRes] = await Promise.all([
+              api.get(`/applications/${app.id}/tasks`).catch(() => []),
+              api.get(`/applications/${app.id}/performers`).catch(() => []),
+            ]);
+            return {
+              ...app,
+              tasks,
+              performers: performersRes,
+            };
+          } catch {
+            return app;
+          }
+        })
+      );
+
+      const transformedApplications = applicationsWithTasks.map(app => ({
         id: app.id,
         title: app.title,
         description: app.description,
@@ -235,7 +275,9 @@ const ApplicationsList = () => {
         status: app.status,
         amount: app.amount,
         performers_count: app.performers_count,
+        city: app.city,
         performers: app.performers,
+        tasks: app.tasks,
         created_at: app.created_at,
         updated_at: app.updated_at,
       }));

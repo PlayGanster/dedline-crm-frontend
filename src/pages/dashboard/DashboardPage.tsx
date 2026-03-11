@@ -91,8 +91,7 @@ interface TopPerformer {
 interface TopClient {
   id: number
   type: string
-  first_name: string | null
-  last_name: string | null
+  fio: string | null
   company_name: string | null
   applicationsCount: number
   totalSpent: number
@@ -199,7 +198,7 @@ const DashboardPage = () => {
     if (item.type === 'LEGAL_ENTITY') {
       return item.company_name || 'Компания'
     }
-    return `${item.last_name || ''} ${item.first_name || ''}`.trim() || 'Клиент'
+    return item.fio || 'Клиент'
   }
 
   const StatCard = ({ title, value, icon: Icon, trend, trendValue, color }: any) => (
@@ -546,7 +545,7 @@ const DashboardPage = () => {
                               <AvatarFallback className="text-xs">
                                 {client.type === 'LEGAL_ENTITY'
                                   ? (client.company_name || 'К')[0].toUpperCase()
-                                  : `${client.last_name?.[0] || ''}${client.first_name?.[0] || ''}`}
+                                  : (client.fio || 'К')[0].toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">

@@ -12,8 +12,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { ArrowLeft, Pencil, Trash2, User, Mail, Phone, DollarSign, Files, Users, ClipboardList, Plus, MapPin, Building2, Calendar, Clock, X, Save, Upload, Download, CheckCircle2, Circle } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, User, Mail, Phone, DollarSign, Files, Users, ClipboardList, Plus, MapPin, Building2, Calendar, Clock, X, Save, Upload, Download, CheckCircle2, Circle, Briefcase, FileText, CreditCard } from "lucide-react"
 import { ConfirmDialog, useConfirm } from "@/shared/ui/confirm-dialog"
+import { PerformerSelectorDialog } from "@/features/performer-selector"
 
 const statusLabels: Record<string, string> = { 
   'NEW': 'Новая', 
@@ -39,11 +40,11 @@ interface Task {
   start_date: string
   time_from: string
   time_to: string
-  overtime: boolean
   rate: number
   payment_unit: string
-  customer_price?: number
+  customer_price: number
   hours?: number
+  comment?: string
   status?: 'IN_PROGRESS' | 'COMPLETED'
 }
 
@@ -55,7 +56,12 @@ interface Performer {
     last_name: string
     middle_name?: string
     phone: string
+    email?: string
     avatar?: string
+    city?: string
+    is_verified?: boolean
+    is_active?: boolean
+    professions?: { id: number; name: string }[]
     requisites?: any[]
   }
 }
@@ -73,15 +79,24 @@ interface Shift {
   date: string
   hours: number
   amount: number
-  receipt_sent: boolean
+  receipt_file?: string
 }
 
 interface Document {
   id: number
+  type?: 'document' | 'receipt'
   filename: string
   original_name: string
   is_verified: boolean
-  uploaded_at: string
+  created_at: string
+  uploaded_at?: string
+  // Для чеков
+  shift_id?: number | null
+  task_id?: number | null
+  performer_id?: number | null
+  date?: string | null
+  hours?: number | null
+  amount?: number | null
 }
 
 const ApplicationProfilePage = () => {
@@ -110,16 +125,13 @@ const ApplicationProfilePage = () => {
   
   // Performers
   const [performers, setPerformers] = useState<Performer[]>([])
-  const [availablePerformers, setAvailablePerformers] = useState<any[]>([])
   const [showAddPerformerDialog, setShowAddPerformerDialog] = useState(false)
-  const [selectedPerformerRequisite, setSelectedPerformerRequisite] = useState<{ performerId: number, requisiteId: number } | null>(null)
   
   // Payments
   const [shifts, setShifts] = useState<Shift[]>([])
   const [totalPaid, setTotalPaid] = useState(0)
   const [totalAmount, setTotalAmount] = useState(0)
   const [budgetRemaining, setBudgetRemaining] = useState(0)
-  const [customerPayments, setCustomerPayments] = useState(0)
   const [profit, setProfit] = useState(0)
   const [editingBudget, setEditingBudget] = useState(false)
   const [budgetInput, setBudgetInput] = useState(0)
@@ -130,12 +142,18 @@ const ApplicationProfilePage = () => {
     date: string
     hours: number
     amount: number
-    receipt_sent: boolean
+    receipt_file?: File
   } | null>(null)
+
+  // Для загрузки чека
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
   
   // Documents
   const [documents, setDocuments] = useState<Document[]>([])
   const [uploadingDocument, setUploadingDocument] = useState(false)
+
+  // Статус заявки для блокировки
+  const isApplicationClosed = application && (application.status === 'COMPLETED' || application.status === 'CANCELLED')
   
   const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -197,18 +215,12 @@ const ApplicationProfilePage = () => {
         // Выплачено исполнителям (смены)
         const totalPaid = shiftsData.reduce((sum: number, s: Shift) => sum + (parseFloat(String(s.amount)) || 0), 0)
         setTotalPaid(totalPaid)
-        
-        // Остаток бюджета
+
+        // Остаток бюджета = Бюджет - Выплаты
         setBudgetRemaining(budget - totalPaid)
-        
-        // Оплата от клиентов (счета)
-        const paidInvoices = invoicesData
-          .filter((inv: any) => inv.status === 'PAID')
-          .reduce((sum: number, inv: any) => sum + parseFloat(String(inv.amount)), 0)
-        setCustomerPayments(paidInvoices)
-        
-        // Прибыль = Оплата клиентов - Выплаты исполнителям
-        setProfit(paidInvoices - totalPaid)
+
+        // Прибыль = Бюджет - Выплаты
+        setProfit(budget - totalPaid)
         
         setLoading(false)
       }).catch(() => {
@@ -245,12 +257,12 @@ const ApplicationProfilePage = () => {
         start_date: '',
         time_from: '09:00',
         time_to: '18:00',
-        overtime: false,
         rate: 0,
         payment_unit: 'shift',
         customer_price: 0,
         hours: 8,
         status: 'IN_PROGRESS',
+        comment: '',
       })
     }
   }
@@ -346,25 +358,13 @@ const ApplicationProfilePage = () => {
   }
 
   // Performer functions
-  const openAddPerformerDialog = async () => {
+  const handleAddPerformer = async (performerId: number, requisiteId?: number) => {
     try {
-      const performersData: any[] = await api.get('/performers')
-      setAvailablePerformers(performersData)
-      setSelectedPerformerRequisite(null)
-      setShowAddPerformerDialog(true)
-    } catch (err: any) {
-      notifyError('Ошибка', 'Не удалось загрузить исполнителей')
-    }
-  }
-
-  const handleAddPerformer = async (performerId: number) => {
-    try {
-      await api.post(`/applications/${id}/performers/${performerId}`)
+      await api.post(`/applications/${id}/performers/${performerId}`, { requisiteId })
       const updated: Performer[] = await api.get(`/applications/${id}/performers`)
       setPerformers(updated)
       notifySuccess('Исполнитель добавлен', '')
       setShowAddPerformerDialog(false)
-      setSelectedPerformerRequisite(null)
     } catch (err: any) {
       notifyError('Ошибка', err.message || 'Не удалось добавить исполнителя')
     }
@@ -396,44 +396,66 @@ const ApplicationProfilePage = () => {
   const handleSaveShift = async () => {
     if (!shiftForm) return
     try {
-      await api.post(`/applications/${id}/shifts`, shiftForm)
-      const [newShifts, invoices]: [Shift[], any[]] = await Promise.all([
+      setLoading(true)
+      // Сначала создаём смену без чека
+      const shiftData = {
+        performer_id: shiftForm.performer_id,
+        task_id: shiftForm.task_id,
+        date: shiftForm.date,
+        hours: shiftForm.hours,
+        amount: shiftForm.amount,
+      }
+      const newShift = await api.post(`/applications/${id}/shifts`, shiftData)
+
+      // Если есть чек, загружаем его отдельным запросом
+      if (shiftForm.receipt_file) {
+        const formData = new FormData()
+        formData.append('file', shiftForm.receipt_file)
+        await api.post(`/applications/${id}/shifts/${newShift.id}/receipt`, formData)
+      }
+
+      const [newShifts, invoices, newDocs]: [Shift[], any[], Document[]] = await Promise.all([
         api.get(`/applications/${id}/shifts`),
         api.get(`/invoices?application_id=${id}`),
+        api.get(`/applications/${id}/documents`),
       ])
       setShifts(newShifts)
-      
+      setDocuments(newDocs)
+
       // Пересчитываем финансы
       const newTotalPaid = newShifts.reduce((sum: number, s: Shift) => sum + parseFloat(String(s.amount)), 0)
       setTotalPaid(newTotalPaid)
       setBudgetRemaining(totalAmount - newTotalPaid)
-      
-      const paidInvoices = invoices
-        .filter((inv: any) => inv.status === 'PAID')
-        .reduce((sum: number, inv: any) => sum + parseFloat(String(inv.amount)), 0)
-      setCustomerPayments(paidInvoices)
-      setProfit(paidInvoices - newTotalPaid)
-      
+      setProfit(totalAmount - newTotalPaid)
+
       notifySuccess('Смена добавлена', '')
       setShowAddShiftDialog(false)
       setShiftForm(null)
+      setLoading(false)
     } catch (err: any) {
+      console.error('[SaveShift] Error:', err)
       notifyError('Ошибка', err.message || 'Не удалось добавить смену')
+      setLoading(false)
     }
   }
 
-  const handleToggleReceipt = async (shiftId: number, receiptSent: boolean) => {
+  const handleUploadReceipt = async (shiftId: number, file: File) => {
     try {
-      await api.put(`/applications/${id}/shifts/${shiftId}`, { receipt_sent: !receiptSent })
-      const newShifts: Shift[] = await api.get(`/applications/${id}/shifts`)
+      setUploadingReceipt(true)
+      const formData = new FormData()
+      formData.append('file', file)
+      await api.post(`/applications/${id}/shifts/${shiftId}/receipt`, formData, { headers: {} })
+      const [newShifts, newDocs]: [Shift[], Document[]] = await Promise.all([
+        api.get(`/applications/${id}/shifts`),
+        api.get(`/applications/${id}/documents`),
+      ])
       setShifts(newShifts)
-      const newTotalPaid = newShifts.reduce((sum: number, s: Shift) => sum + parseFloat(String(s.amount)), 0)
-      setTotalPaid(newTotalPaid)
-      setBudgetRemaining(totalAmount - newTotalPaid)
-      setProfit(customerPayments - newTotalPaid)
-      notifySuccess('Статус чека обновлён', '')
+      setDocuments(newDocs)
+      notifySuccess('Чек загружен', '')
+      setUploadingReceipt(false)
     } catch (err: any) {
-      notifyError('Ошибка', err.message || 'Не удалось обновить статус чека')
+      notifyError('Ошибка', err.message || 'Не удалось загрузить чек')
+      setUploadingReceipt(false)
     }
   }
 
@@ -493,6 +515,19 @@ const ApplicationProfilePage = () => {
     }, { title: 'Удалить заявку?', description: 'Это действие нельзя отменить.', confirmText: 'Удалить', cancelText: 'Отмена', variant: 'destructive' })
   }
 
+  const handleCompleteApplication = async () => {
+    await confirm(async () => {
+      try {
+        await api.put(`/applications/${id}`, { status: 'COMPLETED' })
+        const updatedApp = await api.get(`/applications/${id}`)
+        setApplication(updatedApp)
+        notifySuccess('Заявка завершена', '')
+      } catch (err: any) {
+        notifyError('Ошибка', err.message || 'Не удалось завершить заявку')
+      }
+    }, { title: 'Завершить заявку?', description: 'После завершения нельзя будет добавлять или изменять данные.', confirmText: 'Завершить', cancelText: 'Отмена' })
+  }
+
   if (loading) return (
     <div className="w-full h-full flex flex-col">
       <PageHeader name="Просмотр заявки" />
@@ -506,7 +541,7 @@ const ApplicationProfilePage = () => {
     </div>
   )
 
-  const maxPerformers = application.performers_count || 1
+  const maxPerformers = tasks.reduce((sum, task) => sum + (task.quantity || 1), 0)
   const currentPerformers = performers.length
 
   return (
@@ -522,14 +557,29 @@ const ApplicationProfilePage = () => {
             <ArrowLeft size={16} className="mr-2" />
             Назад
           </Button>
-          <Button variant="outline" onClick={() => navigate(`/applications/${id}/edit?from=${encodeURIComponent(fromPage)}`)}>
-            <Pencil size={16} className="mr-2" />
-            Редактировать
-          </Button>
-          <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-            <Trash2 size={16} className="mr-2" />
-            Удалить
-          </Button>
+          {!isApplicationClosed && (
+            <Button variant="outline" onClick={() => navigate(`/applications/${id}/edit?from=${encodeURIComponent(fromPage)}`)}>
+              <Pencil size={16} className="mr-2" />
+              Редактировать
+            </Button>
+          )}
+          {!isApplicationClosed && application.status !== 'COMPLETED' && (
+            <Button variant="default" onClick={handleCompleteApplication}>
+              <CheckCircle2 size={16} className="mr-2" />
+              Завершить заявку
+            </Button>
+          )}
+          {!isApplicationClosed && (
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              <Trash2 size={16} className="mr-2" />
+              Удалить
+            </Button>
+          )}
+          {isApplicationClosed && (
+            <Badge variant={application.status === 'COMPLETED' ? 'default' : 'secondary'} className="h-9 px-3">
+              {application.status === 'COMPLETED' ? 'Завершена' : 'Отменена'}
+            </Badge>
+          )}
         </div>
 
         <div className="flex gap-4">
@@ -550,10 +600,6 @@ const ApplicationProfilePage = () => {
               </Button>
               <Button variant={activeTab === 'documents' ? 'default' : 'ghost'} className="justify-start gap-2 h-11 px-3" onClick={() => setActiveTab('documents')}>
                 <Files size={18} /> Документы
-              </Button>
-              <div className="border-t my-2" />
-              <Button variant={activeTab === 'comment' ? 'default' : 'ghost'} className="justify-start gap-2 h-11 px-3" onClick={() => setActiveTab('comment')}>
-                <Users size={18} /> Комментарий
               </Button>
             </div>
           </div>
@@ -600,9 +646,9 @@ const ApplicationProfilePage = () => {
                         </div>
                         <div>
                           <p className="font-medium">
-                            {application.client.type === 'LEGAL_ENTITY' 
-                              ? application.client.company_name 
-                              : `${application.client.last_name} ${application.client.first_name}`}
+                            {application.client.type === 'LEGAL_ENTITY'
+                              ? application.client.company_name
+                              : application.client.fio}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {application.client.type === 'LEGAL_ENTITY' ? 'Юр. лицо' : 'Физ. лицо'}
@@ -696,15 +742,44 @@ const ApplicationProfilePage = () => {
               </div>
             )}
 
+            {/* Комментарий менеджера */}
+            {activeTab === 'info' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Комментарий менеджера
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={managerComment}
+                    onChange={(e) => setManagerComment(e.target.value)}
+                    rows={6}
+                    className="resize-none"
+                    placeholder="Введите комментарий..."
+                    disabled={isApplicationClosed}
+                  />
+                  <div className="flex justify-end mt-2">
+                    <Button onClick={handleSaveComment} disabled={isApplicationClosed}>
+                      <Save size={16} className="mr-2" /> Сохранить комментарий
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Tab: Задачи */}
             {activeTab === 'tasks' && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span>Задачи ({tasks.length})</span>
-                    <Button size="sm" onClick={() => openTaskDialog()}>
-                      <Plus size={16} className="mr-2" /> Добавить задачу
-                    </Button>
+                    {!isApplicationClosed && (
+                      <Button size="sm" onClick={() => openTaskDialog()}>
+                        <Plus size={16} className="mr-2" /> Добавить задачу
+                      </Button>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -725,25 +800,40 @@ const ApplicationProfilePage = () => {
                             <Badge>{getTaskTypeLabel(task.service_type)}</Badge>
                             <Badge variant="secondary">{getPaymentTypeLabel(task.payment_type)}</Badge>
                             <Badge variant="outline">{task.payment_unit === 'shift' ? 'Смена' : 'Почасовая'}</Badge>
-                            <Badge
-                              variant={task.status === 'COMPLETED' ? 'default' : 'secondary'}
-                              className="cursor-pointer hover:opacity-80"
-                              onClick={() => handleToggleTaskStatus(task.id!, task.status)}
-                            >
-                              {task.status === 'COMPLETED' ? (
-                                <><CheckCircle2 size={12} className="mr-1" /> Завершена</>
-                              ) : (
-                                <><Circle size={12} className="mr-1" /> В работе</>
-                              )}
-                            </Badge>
+                            {!isApplicationClosed && (
+                              <Badge
+                                variant={task.status === 'COMPLETED' ? 'default' : 'secondary'}
+                                className="cursor-pointer hover:opacity-80"
+                                onClick={() => handleToggleTaskStatus(task.id!, task.status)}
+                              >
+                                {task.status === 'COMPLETED' ? (
+                                  <><CheckCircle2 size={12} className="mr-1" /> Завершена</>
+                                ) : (
+                                  <><Circle size={12} className="mr-1" /> В работе</>
+                                )}
+                              </Badge>
+                            )}
+                            {isApplicationClosed && (
+                              <Badge variant={task.status === 'COMPLETED' ? 'default' : 'secondary'}>
+                                {task.status === 'COMPLETED' ? (
+                                  <><CheckCircle2 size={12} className="mr-1" /> Завершена</>
+                                ) : (
+                                  <><Circle size={12} className="mr-1" /> В работе</>
+                                )}
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <Button size="sm" variant="ghost" onClick={() => openTaskDialog(task)}>
-                              <Pencil size={14} className="mr-2" /> Редактировать
-                            </Button>
-                            <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleDeleteTask(task.id!)}>
-                              <X size={14} />
-                            </Button>
+                            {!isApplicationClosed && (
+                              <Button size="sm" variant="ghost" onClick={() => openTaskDialog(task)}>
+                                <Pencil size={14} className="mr-2" /> Редактировать
+                              </Button>
+                            )}
+                            {!isApplicationClosed && (
+                              <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleDeleteTask(task.id!)}>
+                                <X size={14} />
+                              </Button>
+                            )}
                           </div>
                         </div>
                         <div className="grid grid-cols-3 gap-4 text-sm">
@@ -751,9 +841,14 @@ const ApplicationProfilePage = () => {
                           <div><span className="text-muted-foreground">Место сбора:</span> {task.meeting_point || '—'}</div>
                           <div><span className="text-muted-foreground">Дата:</span> {task.start_date ? new Date(task.start_date).toLocaleDateString('ru-RU') : '—'}</div>
                           <div><span className="text-muted-foreground">Время:</span> {task.time_from} - {task.time_to}</div>
-                          <div><span className="text-muted-foreground">Количество:</span> {task.quantity} чел.</div>
-                          <div><span className="text-muted-foreground">Переработка:</span> {task.overtime ? 'Да' : 'Нет'}</div>
+                          <div><span className="text-muted-foreground">Кол-во исполнителей:</span> {task.quantity} чел.</div>
                         </div>
+                        {task.comment && (
+                          <div className="pt-3 border-t">
+                            <span className="text-muted-foreground text-xs">Комментарий:</span>
+                            <p className="text-sm mt-1">{task.comment}</p>
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-4 pt-3 border-t">
                           <div><span className="text-muted-foreground">Ставка:</span> <span className="font-medium">{task.rate} ₽</span></div>
                           <div><span className="text-muted-foreground">Цена для заказчика:</span> <span className="font-medium text-green-600">{task.customer_price} ₽</span></div>
@@ -771,8 +866,8 @@ const ApplicationProfilePage = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span>Исполнители ({currentPerformers}/{maxPerformers})</span>
-                    {currentPerformers < maxPerformers && (
-                      <Button size="sm" onClick={openAddPerformerDialog}>
+                    {!isApplicationClosed && currentPerformers < maxPerformers && (
+                      <Button size="sm" onClick={() => setShowAddPerformerDialog(true)}>
                         <Plus size={16} className="mr-2" /> Добавить
                       </Button>
                     )}
@@ -782,23 +877,61 @@ const ApplicationProfilePage = () => {
                   {performers.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">Исполнители ещё не добавлены</p>
                   ) : (
-                    performers.map((p) => (
-                      <div key={p.performer.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10">
-                            {p.performer.avatar && <AvatarImage src={p.performer.avatar} />}
-                            <AvatarFallback>{p.performer.last_name[0]}{p.performer.first_name[0]}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{p.performer.last_name} {p.performer.first_name} {p.performer.middle_name}</p>
-                            <p className="text-sm text-muted-foreground">{p.performer.phone}</p>
+                    performers.map((p) => {
+                      const professionNames = p.performer.professions?.map((prof: any) => prof.name).join(', ')
+                      const requisite = p.performer.requisites?.[0]
+                      const requisiteText = requisite
+                        ? `${requisite.name || requisite.type} — ${requisite.card_number || requisite.sbp_phone || requisite.account_number || ''}`
+                        : 'Реквизиты не указаны'
+
+                      return (
+                        <div key={p.performer.id} className="flex items-start justify-between p-3 border rounded-lg">
+                          <div className="flex items-start gap-3 flex-1">
+                            <Avatar className="h-10 w-10">
+                              {p.performer.avatar && <AvatarImage src={p.performer.avatar} />}
+                              <AvatarFallback>{p.performer.last_name[0]}{p.performer.first_name[0]}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-medium">{p.performer.last_name} {p.performer.first_name} {p.performer.middle_name}</p>
+                                {p.performer.is_verified && (
+                                  <Badge variant="default" className="text-xs gap-1">
+                                    <CheckCircle2 size={12} /> Проверен
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                                <div className="flex items-center gap-1">
+                                  <Phone size={14} />
+                                  <span>{p.performer.phone}</span>
+                                </div>
+                                {p.performer.city && (
+                                  <div className="flex items-center gap-1">
+                                    <MapPin size={14} />
+                                    <span>{p.performer.city}</span>
+                                  </div>
+                                )}
+                              </div>
+                              {professionNames && (
+                                <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
+                                  <Briefcase size={14} />
+                                  <span>{professionNames}</span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                <CreditCard size={14} />
+                                <span>{requisiteText}</span>
+                              </div>
+                            </div>
                           </div>
+                          {!isApplicationClosed && (
+                            <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleRemovePerformer(p.performer.id)}>
+                              <X size={16} />
+                            </Button>
+                          )}
                         </div>
-                        <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleRemovePerformer(p.performer.id)}>
-                          <X size={16} />
-                        </Button>
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </CardContent>
               </Card>
@@ -811,9 +944,11 @@ const ApplicationProfilePage = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <span>Выплаты исполнителям</span>
-                      <Button size="sm" onClick={openAddShiftDialog}>
-                        <Plus size={16} className="mr-2" /> Добавить смену
-                      </Button>
+                      {!isApplicationClosed && (
+                        <Button size="sm" onClick={openAddShiftDialog}>
+                          <Plus size={16} className="mr-2" /> Добавить смену
+                        </Button>
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -894,26 +1029,48 @@ const ApplicationProfilePage = () => {
                                     </div>
                                     <div className="flex items-center gap-3">
                                       <span className="font-medium text-sm">{shift.amount} ₽</span>
-                                      <Badge
-                                        variant={shift.receipt_sent ? 'default' : 'secondary'}
-                                        className="text-xs cursor-pointer hover:opacity-80"
-                                        onClick={() => handleToggleReceipt(shift.id, shift.receipt_sent)}
-                                      >
-                                        {shift.receipt_sent ? (
-                                          <><CheckCircle2 size={12} className="mr-1" /> Чек отправлен</>
-                                        ) : (
-                                          <><Circle size={12} className="mr-1" /> Чек не отправлен</>
-                                        )}
-                                      </Badge>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                                        onClick={() => handleDeleteShift(shift.id)}
-                                      >
-                                        <Trash2 size={14} className="mr-1" />
-                                        Удалить
-                                      </Button>
+                                      {shift.receipt_file ? (
+                                        <Badge
+                                          variant="default"
+                                          className="text-xs"
+                                        >
+                                          <CheckCircle2 size={12} className="mr-1" /> Чек загружен
+                                        </Badge>
+                                      ) : (
+                                        <>
+                                          {!isApplicationClosed && (
+                                            <>
+                                              <input
+                                                type="file"
+                                                accept="image/*,.pdf"
+                                                id={`receipt-${shift.id}`}
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                  const file = e.target.files?.[0]
+                                                  if (file) handleUploadReceipt(shift.id, file)
+                                                }}
+                                              />
+                                              <label
+                                                htmlFor={`receipt-${shift.id}`}
+                                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground cursor-pointer hover:bg-secondary/80"
+                                              >
+                                                <Upload size={12} /> Загрузить чек
+                                              </label>
+                                            </>
+                                          )}
+                                        </>
+                                      )}
+                                      {!isApplicationClosed && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                          onClick={() => handleDeleteShift(shift.id)}
+                                        >
+                                          <Trash2 size={14} className="mr-1" />
+                                          Удалить
+                                        </Button>
+                                      )}
                                     </div>
                                   </div>
                                 ))}
@@ -931,7 +1088,7 @@ const ApplicationProfilePage = () => {
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-base font-semibold">Финансы заявки</h3>
                       {!editingBudget ? (
-                        <Button size="sm" variant="ghost" onClick={() => { setEditingBudget(true); setBudgetInput(totalAmount); }}>
+                        <Button size="sm" variant="ghost" onClick={() => { setEditingBudget(true); setBudgetInput(totalAmount); }} disabled={isApplicationClosed}>
                           <Pencil size={14} className="mr-2" /> Изменить бюджет
                         </Button>
                       ) : (
@@ -945,7 +1102,7 @@ const ApplicationProfilePage = () => {
                         </div>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                       <div className="text-center p-4 border rounded-lg">
                         <p className="text-sm text-muted-foreground">Бюджет заявки</p>
                         {!editingBudget ? (
@@ -962,10 +1119,6 @@ const ApplicationProfilePage = () => {
                       <div className="text-center p-4 border rounded-lg">
                         <p className="text-sm text-muted-foreground">Выплачено</p>
                         <p className="text-2xl font-bold text-red-600">{totalPaid} ₽</p>
-                      </div>
-                      <div className="text-center p-4 border rounded-lg">
-                        <p className="text-sm text-muted-foreground">Оплачено клиентом</p>
-                        <p className="text-2xl font-bold text-green-600">{customerPayments} ₽</p>
                       </div>
                       <div className="text-center p-4 border rounded-lg">
                         <p className="text-sm text-muted-foreground">
@@ -999,14 +1152,16 @@ const ApplicationProfilePage = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span>Документы</span>
-                    <label>
-                      <input type="file" className="hidden" onChange={handleUploadDocument} accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
-                      <Button size="sm" asChild>
-                        <span>
-                          <Upload size={16} className="mr-2" /> {uploadingDocument ? 'Загрузка...' : 'Загрузить'}
-                        </span>
-                      </Button>
-                    </label>
+                    {!isApplicationClosed && (
+                      <label>
+                        <input type="file" className="hidden" onChange={handleUploadDocument} accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+                        <Button size="sm" asChild>
+                          <span>
+                            <Upload size={16} className="mr-2" /> {uploadingDocument ? 'Загрузка...' : 'Загрузить'}
+                          </span>
+                        </Button>
+                      </label>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1017,48 +1172,52 @@ const ApplicationProfilePage = () => {
                       <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-                            <Files size={20} className="text-muted-foreground" />
+                            {doc.type === 'receipt' ? (
+                              <Files size={20} className="text-muted-foreground" />
+                            ) : (
+                              <Files size={20} className="text-muted-foreground" />
+                            )}
                           </div>
                           <div>
-                            <p className="font-medium">{doc.original_name}</p>
-                            <p className="text-sm text-muted-foreground">Загружен: {new Date(doc.uploaded_at).toLocaleDateString('ru-RU')}</p>
+                            <p className="font-medium">
+                              {doc.type === 'receipt' ? `Чек смены #${doc.shift_id}` : doc.original_name}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              Загружен: {new Date(doc.created_at).toLocaleDateString('ru-RU')}
+                              {doc.type === 'receipt' && doc.performer_id && (
+                                <span className="ml-2">
+                                  • Смена: {doc.date ? new Date(doc.date).toLocaleDateString('ru-RU') : 'N/A'}
+                                  • {doc.hours} ч.
+                                  • {doc.amount} ₽
+                                </span>
+                              )}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge variant={doc.is_verified ? 'default' : 'secondary'}>
-                            {doc.is_verified ? (
-                              <><CheckCircle2 size={14} className="mr-1" /> Проверено</>
-                            ) : (
-                              <><Circle size={14} className="mr-1" /> На проверке</>
-                            )}
-                          </Badge>
-                          {!doc.is_verified && (
-                            <Button size="sm" variant="outline" onClick={() => handleVerifyDocument(doc.id)}>
-                              <CheckCircle2 size={16} />
-                            </Button>
+                          {doc.type !== 'receipt' && (
+                            <>
+                              <Badge variant={doc.is_verified ? 'default' : 'secondary'}>
+                                {doc.is_verified ? (
+                                  <><CheckCircle2 size={14} className="mr-1" /> Проверено</>
+                                ) : (
+                                  <><Circle size={14} className="mr-1" /> На проверке</>
+                                )}
+                              </Badge>
+                              {!doc.is_verified && !isApplicationClosed && (
+                                <Button size="sm" variant="outline" onClick={() => handleVerifyDocument(doc.id)}>
+                                  <CheckCircle2 size={16} />
+                                </Button>
+                              )}
+                            </>
                           )}
-                          <Button size="sm" variant="ghost">
+                          <Button size="sm" variant="ghost" onClick={() => window.open(`/uploads/${doc.type === 'receipt' ? 'receipts' : 'application-documents'}/${doc.filename}`, '_blank')}>
                             <Download size={16} />
                           </Button>
                         </div>
                       </div>
                     ))
                   )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Tab: Комментарий */}
-            {activeTab === 'comment' && (
-              <Card>
-                <CardHeader><CardTitle>Комментарий менеджера</CardTitle></CardHeader>
-                <CardContent>
-                  <Textarea value={managerComment} onChange={(e) => setManagerComment(e.target.value)} rows={8} className="resize-none" placeholder="Введите комментарий..." />
-                  <div className="flex justify-end mt-2">
-                    <Button onClick={handleSaveComment}>
-                      <Save size={16} className="mr-2" /> Сохранить комментарий
-                    </Button>
-                  </div>
                 </CardContent>
               </Card>
             )}
@@ -1089,72 +1248,12 @@ const ApplicationProfilePage = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAddPerformerDialog} onOpenChange={setShowAddPerformerDialog}>
-        <DialogContent className="max-w-2xl max-h-[500px] flex flex-col">
-          <DialogHeader><DialogTitle>Добавить исполнителя</DialogTitle></DialogHeader>
-          <div className="flex-1 overflow-auto space-y-2">
-            {availablePerformers.filter((p: any) => p.is_verified && p.is_active).map((performer) => (
-              <div key={performer.id} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8"><AvatarFallback>{performer.first_name?.[0]}{performer.last_name?.[0]}</AvatarFallback></Avatar>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{performer.last_name} {performer.first_name}</p>
-                        {performer.is_verified && (
-                          <Badge variant="default" className="text-xs">
-                            <CheckCircle2 size={12} className="mr-1" /> Проверен
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">{performer.phone}</p>
-                    </div>
-                  </div>
-                </div>
-                {performer.requisites && performer.requisites.length > 0 ? (
-                  <div className="space-y-2">
-                    <Label className="text-xs">Реквизиты</Label>
-                    <Select
-                      value={selectedPerformerRequisite?.performerId === performer.id ? String(selectedPerformerRequisite.requisiteId) : undefined}
-                      onValueChange={(v) => setSelectedPerformerRequisite({ performerId: performer.id, requisiteId: parseInt(v) })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите реквизиты" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {performer.requisites.map((req: any) => (
-                          <SelectItem key={req.id} value={String(req.id)}>
-                            {req.name || req.type} - {req.card_number || req.sbp_phone || req.account_number || 'Без названия'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Реквизиты не указаны</p>
-                )}
-                <Button
-                  size="sm"
-                  className="w-full"
-                  onClick={() => handleAddPerformer(performer.id)}
-                  disabled={performer.requisites && performer.requisites.length > 0 && !selectedPerformerRequisite?.requisiteId}
-                >
-                  Добавить
-                </Button>
-              </div>
-            ))}
-            {availablePerformers.filter((p: any) => p.is_verified && p.is_active).length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>Нет доступных проверенных исполнителей</p>
-                <p className="text-xs mt-2">Только проверенные исполнители могут быть добавлены в заявку</p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowAddPerformerDialog(false); setSelectedPerformerRequisite(null); }}>Отмена</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PerformerSelectorDialog
+        open={showAddPerformerDialog}
+        onOpenChange={setShowAddPerformerDialog}
+        onSelect={handleAddPerformer}
+        applicationCity={application?.city}
+      />
 
       <Dialog open={showAddShiftDialog} onOpenChange={(open) => { setShowAddShiftDialog(open); if(!open) setShiftForm(null); }}>
         <DialogContent className="max-w-md">
@@ -1203,9 +1302,17 @@ const ApplicationProfilePage = () => {
               <Label>Сумма (₽)</Label>
               <Input type="number" value={shiftForm?.amount} onChange={(e) => setShiftForm(shiftForm ? {...shiftForm, amount: parseFloat(e.target.value)} : null)} />
             </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={shiftForm?.receipt_sent} onChange={(e) => setShiftForm(shiftForm ? {...shiftForm, receipt_sent: e.target.checked} : null)} className="h-4 w-4" />
-              <Label>Чек отправлен</Label>
+            <div className="space-y-2">
+              <Label>Чек (фото/скан)</Label>
+              <Input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  setShiftForm(shiftForm ? {...shiftForm, receipt_file: file} : null)
+                }}
+              />
+              <p className="text-xs text-muted-foreground">Можно загрузить после создания смены</p>
             </div>
           </div>
           <DialogFooter>
@@ -1227,115 +1334,219 @@ const ApplicationProfilePage = () => {
               )}
             </div>
           </DialogHeader>
-          <div className="grid grid-cols-4 gap-4 py-4">
-            <div className="space-y-2">
-              <Label className="text-xs">Тип услуги</Label>
-              <Select value={taskForm?.service_type} onValueChange={(v) => updateTaskForm('service_type', v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cleaning">Уборка</SelectItem>
-                  <SelectItem value="loading">Погрузка</SelectItem>
-                  <SelectItem value="construction">Строительство</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Оплата</Label>
-              <Select value={taskForm?.payment_type} onValueChange={(v) => updateTaskForm('payment_type', v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cashless">Безнал</SelectItem>
-                  <SelectItem value="vat">НДС</SelectItem>
-                  <SelectItem value="cash">На руки</SelectItem>
-                  <SelectItem value="card">На карту</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Место проведения работ</Label>
-              <div className="flex items-center gap-2">
-                <MapPin size={14} className="text-muted-foreground" />
-                <Input value={taskForm?.work_location} onChange={(e) => updateTaskForm('work_location', e.target.value)} placeholder="Адрес" />
+          <div className="space-y-4 py-4">
+            {/* 1. Что делаем? */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                <Briefcase className="h-4 w-4" />
+                <span>Что делаем</span>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Место сбора</Label>
-              <div className="flex items-center gap-2">
-                <Building2 size={14} className="text-muted-foreground" />
-                <Input value={taskForm?.meeting_point} onChange={(e) => updateTaskForm('meeting_point', e.target.value)} placeholder="Где встречают" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Фронт работ</Label>
-              <Input value={taskForm?.work_front} onChange={(e) => updateTaskForm('work_front', e.target.value)} placeholder="Объём работ" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Количество</Label>
-              <Input type="number" value={taskForm?.quantity} onChange={(e) => updateTaskForm('quantity', parseInt(e.target.value))} />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Дата начала работ</Label>
-              <div className="flex items-center gap-2">
-                <Calendar size={14} className="text-muted-foreground" />
-                <Input type="date" value={taskForm?.start_date} onChange={(e) => updateTaskForm('start_date', e.target.value)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label className="text-xs">Время от</Label>
-                <div className="flex items-center gap-2">
-                  <Clock size={14} className="text-muted-foreground" />
-                  <Input type="time" value={taskForm?.time_from} onChange={(e) => updateTaskForm('time_from', e.target.value)} />
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs">Тип услуги</Label>
+                  <Select value={taskForm?.service_type} onValueChange={(v) => updateTaskForm('service_type', v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cleaning">Уборка</SelectItem>
+                      <SelectItem value="loading">Погрузка</SelectItem>
+                      <SelectItem value="construction">Строительство</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Время до</Label>
-                <div className="flex items-center gap-2">
-                  <Clock size={14} className="text-muted-foreground" />
-                  <Input type="time" value={taskForm?.time_to} onChange={(e) => updateTaskForm('time_to', e.target.value)} />
+                <div className="space-y-2">
+                  <Label className="text-xs">Фронт работ</Label>
+                  <Textarea
+                    value={taskForm?.work_front}
+                    onChange={(e) => updateTaskForm('work_front', e.target.value)}
+                    placeholder="Объём работ"
+                    rows={3}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Комментарий к задаче</Label>
+                  <Textarea
+                    value={taskForm?.comment}
+                    onChange={(e) => updateTaskForm('comment', e.target.value)}
+                    placeholder="Детали задачи, особые указания..."
+                    rows={2}
+                  />
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={taskForm?.overtime} onChange={(e) => updateTaskForm('overtime', e.target.checked)} className="h-4 w-4 rounded border-gray-300" />
-              <Label className="text-xs">Переработка</Label>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Ставка для исполнителя (₽)</Label>
-              <div className="flex items-center gap-2">
-                <DollarSign size={14} className="text-muted-foreground" />
-                <Input type="number" value={taskForm?.rate} onChange={(e) => updateTaskForm('rate', parseFloat(e.target.value))} />
+
+            {/* 2. Где делаем? */}
+            <div className="space-y-3 pt-3 border-t">
+              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                <span>Где делаем</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">Место проведения работ</Label>
+                  <div className="flex items-center gap-2">
+                    <MapPin size={14} className="text-muted-foreground" />
+                    <Input
+                      value={taskForm?.work_location}
+                      onChange={(e) => updateTaskForm('work_location', e.target.value)}
+                      placeholder="Адрес объекта"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Место сбора</Label>
+                  <div className="flex items-center gap-2">
+                    <Building2 size={14} className="text-muted-foreground" />
+                    <Input
+                      value={taskForm?.meeting_point}
+                      onChange={(e) => updateTaskForm('meeting_point', e.target.value)}
+                      placeholder="Где встречают"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Тип оплаты</Label>
-              <Select value={taskForm?.payment_unit} onValueChange={(v) => updateTaskForm('payment_unit', v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="shift">Смена</SelectItem>
-                  <SelectItem value="hour">Час</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Цена для заказчика (₽)</Label>
-              <div className="flex items-center gap-2">
-                <DollarSign size={14} className="text-muted-foreground" />
-                <Input type="number" value={taskForm?.customer_price} onChange={(e) => updateTaskForm('customer_price', parseFloat(e.target.value))} />
+
+            {/* 3. Когда делаем? */}
+            <div className="space-y-3 pt-3 border-t">
+              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span>Когда делаем</span>
+              </div>
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Дата начала</Label>
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} className="text-muted-foreground" />
+                      <Input
+                        type="date"
+                        value={taskForm?.start_date}
+                        onChange={(e) => updateTaskForm('start_date', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Время от</Label>
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-muted-foreground" />
+                      <Input
+                        type="time"
+                        value={taskForm?.time_from}
+                        onChange={(e) => updateTaskForm('time_from', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Время до</Label>
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-muted-foreground" />
+                      <Input
+                        type="time"
+                        value={taskForm?.time_to}
+                        onChange={(e) => updateTaskForm('time_to', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Комментарий ко времени</Label>
+                  <Textarea
+                    value={taskForm?.time_comment}
+                    onChange={(e) => updateTaskForm('time_comment', e.target.value)}
+                    placeholder="Например: перерыв 1 час, гибкое начало..."
+                    rows={2}
+                  />
+                </div>
               </div>
             </div>
-            {taskForm?.payment_unit === 'hour' && (
-              <div className="space-y-2">
-                <Label className="text-xs">Количество часов</Label>
-                <Input type="number" value={taskForm?.hours} onChange={(e) => updateTaskForm('hours', parseInt(e.target.value))} />
+
+            {/* 4. Кто делает? */}
+            <div className="space-y-3 pt-3 border-t">
+              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span>Кто делает</span>
               </div>
-            )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">Кол-во исполнителей</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={taskForm?.quantity}
+                    onChange={(e) => updateTaskForm('quantity', parseInt(e.target.value))}
+                    className="font-semibold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Сколько платим? */}
+            <div className="space-y-3 pt-3 border-t">
+              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                <DollarSign className="h-4 w-4" />
+                <span>Оплата</span>
+              </div>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs">Тип оплаты</Label>
+                  <Select value={taskForm?.payment_unit} onValueChange={(v) => updateTaskForm('payment_unit', v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="shift">Смена</SelectItem>
+                      <SelectItem value="hour">Час</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {taskForm?.payment_unit === 'hour' && (
+                  <div className="space-y-2">
+                    <Label className="text-xs">Количество часов</Label>
+                    <Input
+                      type="number"
+                      value={taskForm?.hours}
+                      onChange={(e) => updateTaskForm('hours', parseInt(e.target.value))}
+                    />
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Ставка для исполнителя (₽)</Label>
+                    <div className="flex items-center gap-2">
+                      <DollarSign size={14} className="text-muted-foreground" />
+                      <Input
+                        type="number"
+                        value={taskForm?.rate}
+                        onChange={(e) => updateTaskForm('rate', parseFloat(e.target.value))}
+                        className="font-semibold"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Цена для заказчика (₽)</Label>
+                    <div className="flex items-center gap-2">
+                      <DollarSign size={14} className="text-muted-foreground" />
+                      <Input
+                        type="number"
+                        value={taskForm?.customer_price}
+                        onChange={(e) => updateTaskForm('customer_price', parseFloat(e.target.value))}
+                        className="font-semibold"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Прибыль (₽)</Label>
+                  <div className="flex items-center gap-2">
+                    <DollarSign size={14} className="text-green-600" />
+                    <Input
+                      type="number"
+                      value={(taskForm?.customer_price || 0) - (taskForm?.rate || 0)}
+                      disabled
+                      className="font-semibold text-green-600 bg-green-50"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setTaskForm(null); setEditingTask(null); }}>Отмена</Button>

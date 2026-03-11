@@ -11,10 +11,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { CheckCircle2, MapPin, User, ArrowLeft, Search, Check, X } from "lucide-react"
+import { CitySelector } from "@/components/ui/city-selector"
+import { CheckCircle2, MapPin, User, ArrowLeft, Search, X, DollarSign, Briefcase, FileText } from "lucide-react"
 
-interface Client { id: number; email: string; first_name: string; last_name: string; company_name?: string | null; type: 'INDIVIDUAL' | 'LEGAL_ENTITY'; phone?: string; }
-interface Performer { id: number; first_name: string; last_name: string; phone: string; is_verified: boolean; professions?: { name: string }[]; }
+interface Client { id: number; email: string; fio: string; company_name?: string | null; type: 'INDIVIDUAL' | 'LEGAL_ENTITY'; phone?: string; }
 interface UserItem { id: number; first_name: string; last_name: string; email: string; avatar?: string; role: string; }
 
 const ApplicationEditPage = () => {
@@ -24,24 +24,21 @@ const ApplicationEditPage = () => {
   const { success: notifySuccess, error: notifyError } = useNotification()
   const [loading, setLoading] = useState(false)
   const [clients, setClients] = useState<Client[]>([])
-  const [performers, setPerformers] = useState<Performer[]>([])
   const [users, setUsers] = useState<UserItem[]>([])
-  const [formData, setFormData] = useState({ 
-    title: '', 
-    description: '', 
-    client_id: '', 
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    client_id: '',
     client_name: '',
     city: '',
-    status: 'NEW', 
-    amount: '', 
-    performers_count: 1,
+    status: 'NEW',
+    amount: '',
     manager_id: '',
     manager_name: '',
     director_id: '',
     director_name: '',
     manager_comment: '',
   })
-  const [selectedPerformers, setSelectedPerformers] = useState<number[]>([])
   const fromPage = searchParams.get('from') || '/applications'
 
   // Dialogs state
@@ -52,18 +49,16 @@ const ApplicationEditPage = () => {
   useEffect(() => {
     Promise.all([
       api.get('/clients'),
-      api.get('/performers'),
       api.get('/users'),
       id ? api.get(`/applications/${id}`) : Promise.resolve(null),
-    ]).then(([clientsData, performersData, usersData, appData]: [Client[], Performer[], UserItem[], any]) => {
+    ]).then(([clientsData, usersData, appData]: [Client[], UserItem[], any]) => {
       setClients(clientsData)
-      setPerformers(performersData)
       setUsers(usersData)
       if (appData) {
-        const clientName = appData.client?.type === 'LEGAL_ENTITY' 
-          ? appData.client.company_name 
-          : `${appData.client?.last_name} ${appData.client?.first_name}`
-        
+        const clientName = appData.client?.type === 'LEGAL_ENTITY'
+          ? appData.client.company_name
+          : appData.client?.fio
+
         setFormData({
           title: appData.title,
           description: appData.description,
@@ -72,14 +67,12 @@ const ApplicationEditPage = () => {
           city: appData.city || '',
           status: appData.status,
           amount: appData.amount || '',
-          performers_count: appData.performers_count,
           manager_id: appData.manager_id?.toString() || '',
           manager_name: appData.manager ? `${appData.manager.first_name} ${appData.manager.last_name}` : '',
           director_id: appData.director_id?.toString() || '',
           director_name: appData.director ? `${appData.director.first_name} ${appData.director.last_name}` : '',
           manager_comment: appData.manager_comment || '',
         })
-        setSelectedPerformers(appData.performers?.map((p: any) => p.performer.id) || [])
       }
     })
   }, [id])
@@ -95,8 +88,6 @@ const ApplicationEditPage = () => {
         status: formData.status,
         city: formData.city,
         amount: formData.amount ? parseFloat(formData.amount) : undefined,
-        performers_count: parseInt(formData.performers_count.toString()),
-        performer_ids: selectedPerformers.slice(0, parseInt(formData.performers_count.toString())),
         manager_id: formData.manager_id ? parseInt(formData.manager_id) : undefined,
         director_id: formData.director_id ? parseInt(formData.director_id) : undefined,
       }
@@ -115,19 +106,6 @@ const ApplicationEditPage = () => {
     }
   }
 
-  const togglePerformer = (performerId: number) => {
-    const maxCount = parseInt(formData.performers_count.toString())
-    if (selectedPerformers.includes(performerId)) {
-      setSelectedPerformers(selectedPerformers.filter(pId => pId !== performerId))
-    } else {
-      if (selectedPerformers.length >= maxCount) {
-        notifyError('Ошибка', `Можно выбрать не более ${maxCount} исполнителей`)
-        return
-      }
-      setSelectedPerformers([...selectedPerformers, performerId])
-    }
-  }
-
   const openClientDialog = () => {
     setSearchQuery('')
     setShowClientDialog(true)
@@ -142,7 +120,7 @@ const ApplicationEditPage = () => {
     if (client.type === 'LEGAL_ENTITY') {
       return client.company_name || 'Без названия'
     }
-    return `${client.last_name} ${client.first_name}`.trim() || 'Без имени'
+    return client.fio?.trim() || 'Без имени'
   }
 
   const selectClient = (client: Client) => {
@@ -176,190 +154,187 @@ const ApplicationEditPage = () => {
     if (client.type === 'LEGAL_ENTITY') {
       return client.company_name?.toLowerCase().includes(query)
     }
-    return `${client.first_name} ${client.last_name}`.toLowerCase().includes(query)
+    return client.fio?.toLowerCase().includes(query) || false
   })
 
-  const filteredUsers = users.filter(user => 
+  const filteredUsers = users.filter(user =>
     `${user.first_name} ${user.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.email.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   return (
     <div className="w-full h-full flex flex-col">
-      <PageHeader 
+      <PageHeader
         name="Редактирование заявки"
       />
       <div className="flex-1 overflow-auto p-[12px]">
-        {/* Actions Bar */}
-        <div className="flex justify-start gap-2 mb-4">
-          <Button variant="outline" onClick={() => navigate(`/applications/${id}?from=${encodeURIComponent(fromPage)}`)}>
-            <ArrowLeft size={16} className="mr-2" />Отмена
-          </Button>
-          <Button type="submit" form="edit-form" disabled={loading}>
-            {loading ? 'Сохранение...' : 'Сохранить'}
-          </Button>
-        </div>
-
-        <form id="edit-form" onSubmit={handleSubmit} className="space-y-4">
-          {/* Основная информация */}
+        <form id="edit-form" onSubmit={handleSubmit} className="space-y-4 flex flex-col min-h-full">
+          
+          {/* 1. Основная информация */}
           <Card>
-            <CardHeader><CardTitle>Основная информация</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Briefcase className="h-4 w-4" />
+                Основная информация
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Название заявки</Label>
-                <Input 
-                  value={formData.title} 
-                  onChange={(e) => setFormData({...formData, title: e.target.value})} 
-                  required 
+                <Input
+                  value={formData.title}
+                  onChange={(e) => setFormData({...formData, title: e.target.value})}
+                  placeholder="Например: Уборка склада"
+                  required
                 />
               </div>
+
               <div className="space-y-2">
-                <Label>Статус</Label>
-                <Select value={formData.status} onValueChange={(v) => setFormData({...formData, status: v})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NEW">Новая</SelectItem>
-                    <SelectItem value="IN_PROGRESS">В работе</SelectItem>
-                    <SelectItem value="COMPLETED">Завершена</SelectItem>
-                    <SelectItem value="CANCELLED">Отменена</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Описание работы</Label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  rows={4}
+                  placeholder="Опишите что нужно сделать..."
+                  required
+                />
               </div>
-              <div className="space-y-2">
-                <Label>Клиент</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 justify-start"
-                    onClick={openClientDialog}
-                  >
-                    <User size={16} className="mr-2" />
-                    {formData.client_name || 'Выберите клиента'}
-                  </Button>
-                  {formData.client_id && (
-                    <Button type="button" variant="ghost" size="icon" onClick={clearClient}>
-                      <X size={16} />
-                    </Button>
-                  )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Статус</Label>
+                  <Select value={formData.status} onValueChange={(v) => setFormData({...formData, status: v})}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NEW">Новая</SelectItem>
+                      <SelectItem value="IN_PROGRESS">В работе</SelectItem>
+                      <SelectItem value="COMPLETED">Завершена</SelectItem>
+                      <SelectItem value="CANCELLED">Отменена</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Город</Label>
-                <div className="flex items-center gap-2">
-                  <MapPin size={16} className="text-muted-foreground" />
-                  <Input 
-                    value={formData.city} 
-                    onChange={(e) => setFormData({...formData, city: e.target.value})} 
-                    placeholder="Москва"
+
+                <div className="space-y-2">
+                  <Label>Город</Label>
+                  <CitySelector
+                    value={formData.city}
+                    onChange={(value) => setFormData({...formData, city: value})}
+                    placeholder="Выберите город"
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Менеджер заявки</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 justify-start"
-                    onClick={openManagerDialog}
-                  >
-                    <User size={16} className="mr-2" />
-                    {formData.manager_name || 'Выберите менеджера'}
-                  </Button>
-                  {formData.manager_id && (
-                    <Button type="button" variant="ghost" size="icon" onClick={clearManager}>
-                      <X size={16} />
-                    </Button>
-                  )}
+
+                <div className="space-y-2">
+                  <Label>Бюджет (₽)</Label>
+                  <div className="flex items-center gap-2">
+                    <DollarSign size={16} className="text-muted-foreground" />
+                    <Input
+                      type="number"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                      placeholder="50000"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Директор (главный)</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 justify-start bg-muted"
-                    disabled
-                  >
-                    <User size={16} className="mr-2" />
-                    {formData.director_name || 'Не назначен'}
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label>Описание работы</Label>
-                <Textarea 
-                  value={formData.description} 
-                  onChange={(e) => setFormData({...formData, description: e.target.value})} 
-                  rows={4} 
-                  required 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Сумма (₽)</Label>
-                <Input 
-                  type="number" 
-                  value={formData.amount} 
-                  onChange={(e) => setFormData({...formData, amount: e.target.value})} 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Количество исполнителей</Label>
-                <Input 
-                  type="number" 
-                  min="1" 
-                  value={formData.performers_count} 
-                  onChange={(e) => { 
-                    const newCount = parseInt(e.target.value) || 1
-                    setFormData({...formData, performers_count: newCount})
-                    setSelectedPerformers(selectedPerformers.slice(0, newCount))
-                  }} 
-                />
               </div>
             </CardContent>
           </Card>
 
-          {/* Исполнители */}
+          {/* 2. Клиент и ответственные */}
           <Card>
-            <CardHeader><CardTitle>Исполнители ({selectedPerformers.length} / {formData.performers_count})</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Клиент и ответственные
+              </CardTitle>
+            </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-2">
-                {performers.map(performer => (
-                  <Button 
-                    key={performer.id} 
-                    type="button" 
-                    variant={selectedPerformers.includes(performer.id) ? "default" : "outline"} 
-                    className="justify-start h-auto py-2 px-3" 
-                    onClick={() => togglePerformer(performer.id)}
-                  >
-                    <div className="flex items-center gap-2 w-full">
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-medium">{performer.last_name} {performer.first_name}</p>
-                        <p className="text-xs text-muted-foreground">{performer.professions?.map(p => p.name).join(', ') || ''}</p>
-                      </div>
-                      {performer.is_verified && <CheckCircle2 size={16} className="text-green-600" />}
-                      {selectedPerformers.includes(performer.id) && <CheckCircle2 size={16} />}
-                    </div>
-                  </Button>
-                ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Клиент</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 justify-start"
+                      onClick={openClientDialog}
+                    >
+                      <User size={16} className="mr-2" />
+                      {formData.client_name || 'Выберите клиента'}
+                    </Button>
+                    {formData.client_id && (
+                      <Button type="button" variant="ghost" size="icon" onClick={clearClient}>
+                        <X size={16} />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Менеджер заявки</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 justify-start"
+                      onClick={openManagerDialog}
+                    >
+                      <User size={16} className="mr-2" />
+                      {formData.manager_name || 'Выберите менеджера'}
+                    </Button>
+                    {formData.manager_id && (
+                      <Button type="button" variant="ghost" size="icon" onClick={clearManager}>
+                        <X size={16} />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Директор (главный)</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 justify-start bg-muted"
+                      disabled
+                    >
+                      <User size={16} className="mr-2" />
+                      {formData.director_name || 'Не назначен'}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Комментарий менеджера */}
+          {/* 3. Комментарий менеджера */}
           <Card>
-            <CardHeader><CardTitle>Комментарий менеджера</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Комментарий менеджера
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               <Textarea
                 value={formData.manager_comment}
                 onChange={(e) => setFormData({...formData, manager_comment: e.target.value})}
-                rows={4}
+                rows={6}
                 placeholder="Введите комментарий..."
+                className="resize-none"
               />
             </CardContent>
           </Card>
+
+          {/* Кнопки действий */}
+          <div className="mt-auto pt-4 bg-background border-t -mx-[12px] px-[12px] flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => navigate(`/applications/${id}?from=${encodeURIComponent(fromPage)}`)}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Сохранение...' : 'Сохранить'}
+            </Button>
+          </div>
         </form>
       </div>
 
@@ -397,7 +372,7 @@ const ApplicationEditPage = () => {
                       <p className="font-medium">
                         {client.type === 'LEGAL_ENTITY'
                           ? client.company_name || 'Без названия'
-                          : `${client.last_name} ${client.first_name}`.trim() || 'Без имени'}
+                          : client.fio?.trim() || 'Без имени'}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {client.type === 'LEGAL_ENTITY' ? 'Юр. лицо' : 'Физ. лицо'}
@@ -406,7 +381,7 @@ const ApplicationEditPage = () => {
                     </div>
                   </div>
                   {formData.client_id === String(client.id) && (
-                    <Check size={20} className="text-primary" />
+                    <CheckCircle2 size={20} className="text-primary" />
                   )}
                 </div>
               ))
@@ -455,7 +430,7 @@ const ApplicationEditPage = () => {
                     </div>
                   </div>
                   {formData.manager_id === String(user.id) && (
-                    <Check size={20} className="text-primary" />
+                    <CheckCircle2 size={20} className="text-primary" />
                   )}
                 </div>
               ))

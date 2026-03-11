@@ -13,7 +13,7 @@ interface Act {
   number: string;
   amount: string;
   status: 'DRAFT' | 'SENT' | 'SIGNED' | 'CANCELLED';
-  client: { id: number; first_name: string; last_name: string; company_name?: string | null; type: string };
+  client: { id: number; fio: string; company_name?: string | null; type: string };
   invoice?: { id: number; number: string } | null;
   application?: { id: number; title: string } | null;
   act_date: string;
@@ -73,7 +73,7 @@ const ActsList = () => {
       align: 'left',
       render: (_: any, row: any) => (
         <p className="text-sm">
-          {row.client.type === 'LEGAL_ENTITY' ? row.client.company_name : `${row.client.last_name} ${row.client.first_name}`}
+          {row.client.type === 'LEGAL_ENTITY' ? row.client.company_name : row.client.fio}
         </p>
       )
     },

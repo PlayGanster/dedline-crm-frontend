@@ -146,7 +146,7 @@ const ActProfilePage = () => {
               {act.client.type === 'LEGAL_ENTITY' ? <Building2 size={20} className="text-muted-foreground mt-1" /> : <User size={20} className="text-muted-foreground mt-1" />}
               <div className="space-y-1">
                 <p className="font-medium">
-                  {act.client.type === 'LEGAL_ENTITY' ? act.client.company_name : `${act.client.last_name} ${act.client.first_name}`}
+                  {act.client.type === 'LEGAL_ENTITY' ? act.client.company_name : act.client.fio}
                 </p>
                 {act.client.email && <p className="text-sm text-muted-foreground">{act.client.email}</p>}
                 {act.client.phone && <p className="text-sm text-muted-foreground">{act.client.phone}</p>}

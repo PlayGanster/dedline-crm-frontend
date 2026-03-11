@@ -114,7 +114,7 @@ const TransactionProfilePage = () => {
                   </div>
                   <Button variant="ghost" className="h-auto justify-start p-0" onClick={() => navigate(`/clients/${transaction.client.id}`)}>
                     <p className="font-medium text-sm">
-                      {transaction.client.type === 'LEGAL_ENTITY' ? transaction.client.company_name : `${transaction.client.last_name} ${transaction.client.first_name}`}
+                      {transaction.client.type === 'LEGAL_ENTITY' ? transaction.client.company_name : transaction.client.fio}
                     </p>
                   </Button>
                 </div>

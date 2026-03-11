@@ -9,9 +9,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CitySelector } from "@/components/ui/city-selector"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ArrowLeft, Plus, X, DollarSign, MapPin, Building2, Calendar, Clock, User, Search, Check } from "lucide-react"
+import {
+  ArrowLeft, Plus, X, DollarSign, MapPin, Building2, Calendar, Clock, User,
+  Search, Check, FileText, Briefcase, ChevronsRight
+} from "lucide-react"
 
 interface Task {
   service_type: string
@@ -23,18 +27,18 @@ interface Task {
   start_date: string
   time_from: string
   time_to: string
-  overtime: boolean
   rate: number
   payment_unit: string
-  customer_price?: number
+  customer_price: number
   hours?: number
+  comment?: string
+  time_comment?: string
 }
 
 interface Client {
   id: number
   type: 'INDIVIDUAL' | 'LEGAL_ENTITY'
-  first_name?: string
-  last_name?: string
+  fio?: string
   company_name?: string
   email?: string
   phone?: string
@@ -61,7 +65,6 @@ const ApplicationCreatePage = () => {
     client_name: '',
     city: '',
     amount: '',
-    performers_count: '1',
     manager_id: '',
     manager_name: '',
     director_id: '',
@@ -69,6 +72,16 @@ const ApplicationCreatePage = () => {
     manager_comment: '',
   })
   const [tasks, setTasks] = useState<Task[]>([])
+  const [expandedTasks, setExpandedTasks] = useState<number[]>([0]) // Первая задача развёрнута по умолчанию
+
+  // Подсчёт общего количества исполнителей в заявке (сумма по задачам)
+  const totalPerformers = tasks.reduce((sum, task) => sum + (task.quantity || 0), 0)
+
+  const toggleTask = (index: number) => {
+    setExpandedTasks(prev =>
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+    )
+  }
 
   // Dialogs state
   const [showClientDialog, setShowClientDialog] = useState(false)
@@ -83,8 +96,8 @@ const ApplicationCreatePage = () => {
     const loadData = async () => {
       try {
         const [clientsData, usersData] = await Promise.all([
-          api.get('/clients'),
-          api.get('/users'),
+          api.get('/clients') as Promise<Client[]>,
+          api.get('/users') as Promise<UserItem[]>,
         ])
         setClients(clientsData)
         setUsers(usersData)
@@ -101,10 +114,10 @@ const ApplicationCreatePage = () => {
     if (client.type === 'LEGAL_ENTITY') {
       return client.company_name?.toLowerCase().includes(query)
     }
-    return `${client.first_name} ${client.last_name}`.toLowerCase().includes(query)
+    return client.fio?.toLowerCase().includes(query) || false
   })
 
-  const filteredUsers = users.filter(user => 
+  const filteredUsers = users.filter(user =>
     `${user.first_name} ${user.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.email.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -113,10 +126,11 @@ const ApplicationCreatePage = () => {
     if (client.type === 'LEGAL_ENTITY') {
       return client.company_name || 'Без названия'
     }
-    return `${client.last_name} ${client.first_name}`.trim() || 'Без имени'
+    return client.fio?.trim() || 'Без имени'
   }
 
   const addTask = () => {
+    const newTaskIndex = tasks.length
     setTasks([...tasks, {
       service_type: 'cleaning',
       payment_type: 'cashless',
@@ -127,12 +141,14 @@ const ApplicationCreatePage = () => {
       start_date: '',
       time_from: '09:00',
       time_to: '18:00',
-      overtime: false,
       rate: 0,
       payment_unit: 'shift',
       customer_price: 0,
       hours: 8,
+      comment: '',
+      time_comment: '',
     }])
+    setExpandedTasks([...expandedTasks, newTaskIndex]) // Новая задача развёрнута
   }
 
   const removeTask = (index: number) => {
@@ -142,16 +158,6 @@ const ApplicationCreatePage = () => {
   const updateTask = (index: number, field: keyof Task, value: any) => {
     const newTasks = [...tasks]
     newTasks[index] = { ...newTasks[index], [field]: value }
-
-    if (field === 'rate' || field === 'payment_unit' || field === 'hours') {
-      const task = newTasks[index]
-      if (task.payment_unit === 'shift') {
-        newTasks[index].customer_price = task.rate
-      } else {
-        newTasks[index].customer_price = task.rate * (task.hours || 0)
-      }
-    }
-
     setTasks(newTasks)
   }
 
@@ -165,7 +171,6 @@ const ApplicationCreatePage = () => {
         client_id: parseInt(formData.client_id),
         city: formData.city,
         amount: formData.amount ? parseFloat(formData.amount) : undefined,
-        performers_count: parseInt(formData.performers_count),
         manager_id: formData.manager_id ? parseInt(formData.manager_id) : undefined,
         director_id: formData.director_id ? parseInt(formData.director_id) : undefined,
         manager_comment: formData.manager_comment,
@@ -255,7 +260,17 @@ const ApplicationCreatePage = () => {
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
-            <p className="text-lg font-medium">Заявка успешно создана!</p>
+            <div className="flex justify-center">
+              <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
+                <Check className="h-8 w-8 text-green-600" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-lg font-medium">Заявка успешно создана!</p>
+              <p className="text-sm text-muted-foreground">
+                Перейдите к заявке для просмотра деталей
+              </p>
+            </div>
             <Button onClick={() => navigate(`/applications/${createdAppId}`)}>
               Перейти к заявке
             </Button>
@@ -278,127 +293,136 @@ const ApplicationCreatePage = () => {
       />
 
       <div className="flex-1 overflow-auto p-[12px]">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 flex flex-col min-h-full">
 
           {/* Основная информация */}
           <Card>
-            <CardHeader><CardTitle>Основная информация</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Основная информация
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Название заявки</Label>
                 <Input
                   id="title"
                   value={formData.title}
                   onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  placeholder="Заявка #..."
+                  placeholder="Например: Уборка склада"
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Клиент</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 justify-start"
-                    onClick={openClientDialog}
-                  >
-                    <User size={16} className="mr-2" />
-                    {formData.client_name || 'Выберите клиента'}
-                  </Button>
-                  {formData.client_id && (
-                    <Button type="button" variant="ghost" size="icon" onClick={clearClient}>
-                      <X size={16} />
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="city">Город</Label>
-                <div className="flex items-center gap-2">
-                  <MapPin size={16} className="text-muted-foreground" />
-                  <Input
-                    id="city"
-                    value={formData.city}
-                    onChange={(e) => setFormData({...formData, city: e.target.value})}
-                    placeholder="Москва"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Менеджер заявки</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 justify-start"
-                    onClick={openManagerDialog}
-                  >
-                    <User size={16} className="mr-2" />
-                    {formData.manager_name || 'Выберите менеджера'}
-                  </Button>
-                  {formData.manager_id && (
-                    <Button type="button" variant="ghost" size="icon" onClick={clearManager}>
-                      <X size={16} />
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Директор (главный)</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 justify-start"
-                    onClick={openDirectorDialog}
-                  >
-                    <User size={16} className="mr-2" />
-                    {formData.director_name || 'Выберите директора'}
-                  </Button>
-                  {formData.director_id && (
-                    <Button type="button" variant="ghost" size="icon" onClick={clearDirector}>
-                      <X size={16} />
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2 col-span-2">
                 <Label htmlFor="description">Описание работы</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
                   rows={4}
+                  placeholder="Опишите что нужно сделать..."
                   required
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="amount">Бюджет (₽)</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                  placeholder="0"
-                />
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="city">Город</Label>
+                  <CitySelector
+                    value={formData.city}
+                    onChange={(value) => setFormData({...formData, city: value})}
+                    placeholder="Выберите город"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="performers_count">Количество исполнителей</Label>
-                <Input
-                  id="performers_count"
-                  type="number"
-                  min="1"
-                  value={formData.performers_count}
-                  onChange={(e) => setFormData({...formData, performers_count: e.target.value})}
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Бюджет (₽)</Label>
+                  <div className="flex items-center gap-2">
+                    <DollarSign size={16} className="text-muted-foreground" />
+                    <Input
+                      id="amount"
+                      type="number"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                      placeholder="50000"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Клиент и ответственные */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Клиент и ответственные
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Клиент</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 justify-start"
+                      onClick={openClientDialog}
+                    >
+                      <User size={16} className="mr-2" />
+                      {formData.client_name || 'Выберите клиента'}
+                    </Button>
+                    {formData.client_id && (
+                      <Button type="button" variant="ghost" size="icon" onClick={clearClient}>
+                        <X size={16} />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Менеджер заявки</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 justify-start"
+                      onClick={openManagerDialog}
+                    >
+                      <User size={16} className="mr-2" />
+                      {formData.manager_name || 'Выберите менеджера'}
+                    </Button>
+                    {formData.manager_id && (
+                      <Button type="button" variant="ghost" size="icon" onClick={clearManager}>
+                        <X size={16} />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Директор (главный)</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 justify-start"
+                      onClick={openDirectorDialog}
+                    >
+                      <User size={16} className="mr-2" />
+                      {formData.director_name || 'Выберите директора'}
+                    </Button>
+                    {formData.director_id && (
+                      <Button type="button" variant="ghost" size="icon" onClick={clearDirector}>
+                        <X size={16} />
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -407,7 +431,15 @@ const ApplicationCreatePage = () => {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <span>Задачи</span>
+                <div className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4" />
+                  <span>Задачи</span>
+                  {totalPerformers > 0 && (
+                    <span className="text-sm text-muted-foreground ml-2">
+                      (Всего исполнителей: {totalPerformers})
+                    </span>
+                  )}
+                </div>
                 <Button type="button" size="sm" variant="outline" onClick={addTask}>
                   <Plus size={16} className="mr-2" />
                   Добавить задачу
@@ -416,203 +448,293 @@ const ApplicationCreatePage = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               {tasks.length === 0 ? (
-                <p className="text-center text-muted-foreground py-4">
-                  Задачи ещё не добавлены. Нажмите "Добавить задачу" для создания.
-                </p>
+                <div className="text-center text-muted-foreground py-8">
+                  <Briefcase className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>Задачи ещё не добавлены</p>
+                  <p className="text-sm">Нажмите "Добавить задачу" для создания</p>
+                </div>
               ) : (
-                tasks.map((task, index) => (
-                  <div key={index} className="border rounded-lg p-4 space-y-4 relative">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold">Задача #{index + 1}</h4>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => removeTask(index)}
-                      >
-                        <X size={16} className="mr-2" />
-                        Удалить
-                      </Button>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-xs">Тип услуги</Label>
-                        <Select value={task.service_type} onValueChange={(v) => updateTask(index, 'service_type', v)}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cleaning">Уборка</SelectItem>
-                            <SelectItem value="loading">Погрузка</SelectItem>
-                            <SelectItem value="construction">Строительство</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Оплата</Label>
-                        <Select value={task.payment_type} onValueChange={(v) => updateTask(index, 'payment_type', v)}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cashless">Безнал</SelectItem>
-                            <SelectItem value="vat">НДС</SelectItem>
-                            <SelectItem value="cash">На руки</SelectItem>
-                            <SelectItem value="card">На карту</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Место проведения работ</Label>
-                        <div className="flex items-center gap-2">
-                          <MapPin size={14} className="text-muted-foreground" />
-                          <Input
-                            value={task.work_location}
-                            onChange={(e) => updateTask(index, 'work_location', e.target.value)}
-                            placeholder="Адрес"
-                          />
+                tasks.map((task, index) => {
+                  const isExpanded = expandedTasks.includes(index)
+                  const serviceLabels: Record<string, string> = {
+                    cleaning: 'Уборка',
+                    loading: 'Погрузка',
+                    construction: 'Строительство',
+                  }
+                  
+                  return (
+                  <div key={index} className="border rounded-lg overflow-hidden">
+                    {/* Заголовок задачи (всегда виден) */}
+                    <div
+                      className="flex items-center justify-between p-4 bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                      onClick={() => toggleTask(index)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                          <ChevronsRight size={20} className="text-muted-foreground" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-base">Задача #{index + 1}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {serviceLabels[task.service_type]} • {task.quantity} исп. • {task.start_date || '—'} • {task.time_from}–{task.time_to}
+                          </p>
                         </div>
                       </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Место сбора</Label>
-                        <div className="flex items-center gap-2">
-                          <Building2 size={14} className="text-muted-foreground" />
-                          <Input
-                            value={task.meeting_point}
-                            onChange={(e) => updateTask(index, 'meeting_point', e.target.value)}
-                            placeholder="Где встречают"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Фронт работ</Label>
-                        <Input
-                          value={task.work_front}
-                          onChange={(e) => updateTask(index, 'work_front', e.target.value)}
-                          placeholder="Объём работ"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Количество</Label>
-                        <Input
-                          type="number"
-                          value={task.quantity}
-                          onChange={(e) => updateTask(index, 'quantity', parseInt(e.target.value))}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Дата начала работ</Label>
-                        <div className="flex items-center gap-2">
-                          <Calendar size={14} className="text-muted-foreground" />
-                          <Input
-                            type="date"
-                            value={task.start_date}
-                            onChange={(e) => updateTask(index, 'start_date', e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-2">
-                          <Label className="text-xs">Время от</Label>
-                          <div className="flex items-center gap-2">
-                            <Clock size={14} className="text-muted-foreground" />
-                            <Input
-                              type="time"
-                              value={task.time_from}
-                              onChange={(e) => updateTask(index, 'time_from', e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Время до</Label>
-                          <div className="flex items-center gap-2">
-                            <Clock size={14} className="text-muted-foreground" />
-                            <Input
-                              type="time"
-                              value={task.time_to}
-                              onChange={(e) => updateTask(index, 'time_to', e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
                       <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={task.overtime}
-                          onChange={(e) => updateTask(index, 'overtime', e.target.checked)}
-                          className="h-4 w-4 rounded border-gray-300"
-                        />
-                        <Label className="text-xs">Переработка</Label>
+                        <span className="text-sm font-semibold text-green-600">
+                          +{task.customer_price - task.rate} ₽
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeTask(index)
+                          }}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <X size={16} className="mr-2" />
+                          Удалить
+                        </Button>
                       </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Ставка для исполнителя (₽)</Label>
-                        <div className="flex items-center gap-2">
-                          <DollarSign size={14} className="text-muted-foreground" />
-                          <Input
-                            type="number"
-                            value={task.rate}
-                            onChange={(e) => updateTask(index, 'rate', parseFloat(e.target.value))}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Тип оплаты</Label>
-                        <Select value={task.payment_unit} onValueChange={(v) => updateTask(index, 'payment_unit', v)}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="shift">Смена</SelectItem>
-                            <SelectItem value="hour">Час</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-xs">Цена для заказчика (₽)</Label>
-                        <div className="flex items-center gap-2">
-                          <DollarSign size={14} className="text-muted-foreground" />
-                          <Input
-                            type="number"
-                            value={task.customer_price}
-                            onChange={(e) => updateTask(index, 'customer_price', parseFloat(e.target.value))}
-                            disabled
-                            className="bg-muted"
-                          />
-                        </div>
-                      </div>
-
-                      {task.payment_unit === 'hour' && (
-                        <div className="space-y-2">
-                          <Label className="text-xs">Количество часов</Label>
-                          <Input
-                            type="number"
-                            value={task.hours}
-                            onChange={(e) => updateTask(index, 'hours', parseInt(e.target.value))}
-                          />
-                        </div>
-                      )}
                     </div>
+
+                    {/* Тело задачи (видно только когда развёрнуто) */}
+                    {isExpanded && (
+                      <div className="p-4 space-y-4">
+                      {/* 1. Что делаем? */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                          <Briefcase className="h-4 w-4" />
+                          <span>Что делаем</span>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <Label className="text-xs">Тип услуги</Label>
+                            <Select value={task.service_type} onValueChange={(v) => updateTask(index, 'service_type', v)}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="cleaning">Уборка</SelectItem>
+                                <SelectItem value="loading">Погрузка</SelectItem>
+                                <SelectItem value="construction">Строительство</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Фронт работ</Label>
+                            <Textarea
+                              value={task.work_front}
+                              onChange={(e) => updateTask(index, 'work_front', e.target.value)}
+                              placeholder="Объём работ"
+                              rows={3}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Комментарий к задаче</Label>
+                            <Textarea
+                              value={task.comment}
+                              onChange={(e) => updateTask(index, 'comment', e.target.value)}
+                              placeholder="Детали задачи, особые указания..."
+                              rows={2}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2. Где делаем? */}
+                      <div className="space-y-3 pt-3 border-t">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                          <MapPin className="h-4 w-4" />
+                          <span>Где делаем</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-xs">Место проведения работ</Label>
+                            <div className="flex items-center gap-2">
+                              <MapPin size={14} className="text-muted-foreground" />
+                              <Input
+                                value={task.work_location}
+                                onChange={(e) => updateTask(index, 'work_location', e.target.value)}
+                                placeholder="Адрес объекта"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Место сбора</Label>
+                            <div className="flex items-center gap-2">
+                              <Building2 size={14} className="text-muted-foreground" />
+                              <Input
+                                value={task.meeting_point}
+                                onChange={(e) => updateTask(index, 'meeting_point', e.target.value)}
+                                placeholder="Где встречают"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 3. Когда делаем? */}
+                      <div className="space-y-3 pt-3 border-t">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                          <Calendar className="h-4 w-4" />
+                          <span>Когда делаем</span>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <Label className="text-xs">Дата начала</Label>
+                              <div className="flex items-center gap-2">
+                                <Calendar size={14} className="text-muted-foreground" />
+                                <Input
+                                  type="date"
+                                  value={task.start_date}
+                                  onChange={(e) => updateTask(index, 'start_date', e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-xs">Время от</Label>
+                              <div className="flex items-center gap-2">
+                                <Clock size={14} className="text-muted-foreground" />
+                                <Input
+                                  type="time"
+                                  value={task.time_from}
+                                  onChange={(e) => updateTask(index, 'time_from', e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-xs">Время до</Label>
+                              <div className="flex items-center gap-2">
+                                <Clock size={14} className="text-muted-foreground" />
+                                <Input
+                                  type="time"
+                                  value={task.time_to}
+                                  onChange={(e) => updateTask(index, 'time_to', e.target.value)}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Комментарий ко времени</Label>
+                            <Textarea
+                              value={task.time_comment}
+                              onChange={(e) => updateTask(index, 'time_comment', e.target.value)}
+                              placeholder="Например: перерыв 1 час, гибкое начало..."
+                              rows={2}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 4. Кто делает? */}
+                      <div className="space-y-3 pt-3 border-t">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                          <User className="h-4 w-4" />
+                          <span>Кто делает</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-xs">Кол-во исполнителей</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={task.quantity}
+                              onChange={(e) => updateTask(index, 'quantity', parseInt(e.target.value))}
+                              className="font-semibold"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 5. Сколько платим? */}
+                      <div className="space-y-3 pt-3 border-t">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                          <DollarSign className="h-4 w-4" />
+                          <span>Оплата</span>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <Label className="text-xs">Тип оплаты</Label>
+                            <Select value={task.payment_unit} onValueChange={(v) => updateTask(index, 'payment_unit', v)}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="shift">Смена</SelectItem>
+                                <SelectItem value="hour">Час</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {task.payment_unit === 'hour' && (
+                            <div className="space-y-2">
+                              <Label className="text-xs">Количество часов</Label>
+                              <Input
+                                type="number"
+                                value={task.hours}
+                                onChange={(e) => updateTask(index, 'hours', parseInt(e.target.value))}
+                              />
+                            </div>
+                          )}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label className="text-xs">Ставка для исполнителя (₽)</Label>
+                              <div className="flex items-center gap-2">
+                                <DollarSign size={14} className="text-muted-foreground" />
+                                <Input
+                                  type="number"
+                                  value={task.rate}
+                                  onChange={(e) => updateTask(index, 'rate', parseFloat(e.target.value))}
+                                  className="font-semibold"
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-xs">Цена для заказчика (₽)</Label>
+                              <div className="flex items-center gap-2">
+                                <DollarSign size={14} className="text-muted-foreground" />
+                                <Input
+                                  type="number"
+                                  value={task.customer_price}
+                                  onChange={(e) => updateTask(index, 'customer_price', parseFloat(e.target.value))}
+                                  className="font-semibold"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Прибыль (₽)</Label>
+                            <div className="flex items-center gap-2">
+                              <DollarSign size={14} className="text-green-600" />
+                              <Input
+                                type="number"
+                                value={task.customer_price - task.rate}
+                                disabled
+                                className="font-semibold text-green-600 bg-green-50"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      </div>
+                    )}
                   </div>
-                ))
+                )})
               )}
             </CardContent>
           </Card>
 
           {/* Комментарий менеджера */}
           <Card>
-            <CardHeader><CardTitle>Комментарий менеджера</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Комментарий менеджера
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               <Textarea
                 value={formData.manager_comment}
@@ -624,7 +746,8 @@ const ApplicationCreatePage = () => {
             </CardContent>
           </Card>
 
-          <div className="flex justify-end gap-2">
+          {/* Кнопки действий */}
+          <div className="mt-auto pt-4 bg-background border-t -mx-[12px] px-[12px] flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => navigate('/applications')}>
               Отмена
             </Button>
@@ -669,7 +792,7 @@ const ApplicationCreatePage = () => {
                       <p className="font-medium">
                         {client.type === 'LEGAL_ENTITY'
                           ? client.company_name || 'Без названия'
-                          : `${client.last_name} ${client.first_name}`.trim() || 'Без имени'}
+                          : client.fio?.trim() || 'Без имени'}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {client.type === 'LEGAL_ENTITY' ? 'Юр. лицо' : 'Физ. лицо'}

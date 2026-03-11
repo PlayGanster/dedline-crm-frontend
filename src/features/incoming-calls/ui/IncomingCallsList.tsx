@@ -21,7 +21,7 @@ interface IncomingCall {
   status: 'MISSED' | 'ANSWERED' | 'INCOMING' | 'RINGING';
   created_at: string;
   crm_user?: { id: number; first_name: string; last_name: string; email: string; avatar?: string | null } | null;
-  client?: { id: number; first_name: string; last_name: string; company_name?: string | null; type?: string } | null;
+  client?: { id: number; fio: string; company_name?: string | null; type?: string } | null;
   application?: { id: number; title: string; status: string } | null;
 }
 
@@ -107,7 +107,7 @@ const IncomingCallsList = () => {
         <div>
           {row.client ? (
             <p className="text-sm font-medium">
-              {row.client.type === 'LEGAL_ENTITY' ? row.client.company_name : `${row.client.last_name} ${row.client.first_name}`}
+              {row.client.type === 'LEGAL_ENTITY' ? row.client.company_name : row.client.fio}
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">Не определён</p>

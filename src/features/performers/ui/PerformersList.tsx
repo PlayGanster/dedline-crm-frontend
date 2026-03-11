@@ -24,6 +24,7 @@ interface Performer {
   created_at: string;
   updated_at: string;
   professions?: { id: number; name: string }[];
+  city?: string;
 }
 
 const PerformersList = () => {
@@ -103,6 +104,17 @@ const PerformersList = () => {
       sortable: false,
       filterable: true,
       searchable: false,
+      width: 150,
+      align: 'center',
+      render: (value) => value || '—'
+    },
+    {
+      id: 'city',
+      title: 'Город',
+      dataType: 'string',
+      sortable: true,
+      filterable: true,
+      searchable: true,
       width: 150,
       align: 'center',
       render: (value) => value || '—'
@@ -253,6 +265,7 @@ const PerformersList = () => {
         source: performer.source,
         is_verified: performer.is_verified,
         is_active: performer.is_active,
+        city: performer.city,
         created_at: performer.created_at,
         updated_at: performer.updated_at,
         professions: performer.professions || [],
