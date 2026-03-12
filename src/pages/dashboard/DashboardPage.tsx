@@ -5,7 +5,6 @@ import { PageHeader } from "@/features/page-header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Users,
@@ -28,43 +27,6 @@ import {
   User,
   GripVertical
 } from "lucide-react"
-import {
-  DndContext,
-  DragEndEvent,
-  closestCorners,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-  DefaultDropAnimation,
-  dropAnimationDefaultCSS
-} from '@dnd-kit/core'
-import {
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-  SortableContext
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import {
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar
-} from "recharts"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Skeleton } from "@/components/ui/skeleton"
 
 interface DashboardStats {
   clients: number
@@ -169,15 +131,7 @@ const DashboardPage = () => {
     COMPLETED: [] as KanbanApplication[],
     CANCELLED: [] as KanbanApplication[],
   })
-  const [activeId, setActiveId] = useState<number | null>(null)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-  )
+  const [draggedApp, setDraggedApp] = useState<KanbanApplication | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -191,7 +145,7 @@ const DashboardPage = () => {
       api.get('/dashboard/top-performers?limit=5').catch(() => []),
       api.get('/dashboard/top-clients?limit=5').catch(() => []),
       api.get('/dashboard/monthly-stats?months=6').catch(() => []),
-      api.get('/applications?status=NEW,IN_PROGRESS,COMPLETED,CANCELLED&limit=50').catch(() => []),
+      api.get('/applications?limit=100').catch(() => []),
     ]).then(([
       statsData,
       financialData,
@@ -237,45 +191,45 @@ const DashboardPage = () => {
     })
   }, [chartPeriod])
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
+  const handleDragStart = (e: React.DragEvent, app: KanbanApplication) => {
+    e.dataTransfer.setData('applicationId', app.id.toString())
+    e.dataTransfer.setData('fromStatus', app.status)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragEnd = () => {
+    setDraggedApp(null)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = async (e: React.DragEvent, newStatus: KanbanApplication['status']) => {
+    e.preventDefault()
     
-    if (!over) return
-    
-    const appId = active.id as number
-    const newStatus = over.id as KanbanApplication['status']
-    
-    // Находим заявку
+    const appId = parseInt(e.dataTransfer.getData('applicationId'))
     const app = kanbanApps.find(a => a.id === appId)
-    if (!app || app.status === newStatus) return
     
+    if (!app || app.status === newStatus) return
+
     try {
-      // Обновляем статус на бэкенде
       await api.put(`/applications/${appId}`, { status: newStatus })
       
-      // Обновляем локальное состояние
-      setKanbanApps(prev => prev.map(a => a.id === appId ? { ...a, status: newStatus } : a))
+      const updatedApps = kanbanApps.map(a => a.id === appId ? { ...a, status: newStatus } : a)
+      setKanbanApps(updatedApps)
       
-      // Перегруппировываем
       const grouped = {
-        NEW: kanbanApps.filter(a => a.id === appId ? newStatus === 'NEW' : a.status === 'NEW')
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 5),
-        IN_PROGRESS: kanbanApps.filter(a => a.id === appId ? newStatus === 'IN_PROGRESS' : a.status === 'IN_PROGRESS')
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 5),
-        COMPLETED: kanbanApps.filter(a => a.id === appId ? newStatus === 'COMPLETED' : a.status === 'COMPLETED')
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 5),
-        CANCELLED: kanbanApps.filter(a => a.id === appId ? newStatus === 'CANCELLED' : a.status === 'CANCELLED')
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 5),
+        NEW: updatedApps.filter(a => a.status === 'NEW').slice(0, 5),
+        IN_PROGRESS: updatedApps.filter(a => a.status === 'IN_PROGRESS').slice(0, 5),
+        COMPLETED: updatedApps.filter(a => a.status === 'COMPLETED').slice(0, 5),
+        CANCELLED: updatedApps.filter(a => a.status === 'CANCELLED').slice(0, 5),
       }
       setGroupedApps(grouped)
       
-      notifySuccess('Статус обновлен', `Заявка "${app.title}" перемещена в "${getStatusLabel(newStatus)}"`)
+      notifySuccess('Статус обновлен', `Заявка "${app.title}" перемещена`)
     } catch (err: any) {
-      notifyError('Ошибка', err.message || 'Не удалось обновить статус')
+      notifyError('Ошибка', err.message)
     }
   }
 
@@ -311,14 +265,6 @@ const DashboardPage = () => {
     return labels[status] || status
   }
 
-  const getClientName = (item: any) => {
-    if (!item) return 'Неизвестный'
-    if (item.type === 'LEGAL_ENTITY') {
-      return item.company_name || 'Компания'
-    }
-    return item.fio || 'Клиент'
-  }
-
   const StatCard = ({ title, value, icon: Icon, trend, trendValue, color }: any) => (
     <Card className="relative overflow-hidden">
       <div className={`absolute inset-0 opacity-5 bg-gradient-to-br ${color}`} />
@@ -338,120 +284,94 @@ const DashboardPage = () => {
     </Card>
   )
 
-  const ApplicationCard = ({ app }: { app: KanbanApplication }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-      id: app.id,
-      data: {
-        type: 'Application',
-        app,
-      },
-    })
+  const ApplicationCard = ({ app }: { app: KanbanApplication }) => (
+    <Card 
+      id={`app-card-${app.id}`}
+      draggable
+      onDragStart={(e) => handleDragStart(e, app)}
+      onDragEnd={handleDragEnd}
+      className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+    >
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <GripVertical className="h-3 w-3 text-muted-foreground" />
+            <p className="text-sm font-medium line-clamp-2">{app.title}</p>
+          </div>
+          <Badge variant="outline" className={getStatusColor(app.status)}>
+            {getStatusLabel(app.status)}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <User className="h-3 w-3" />
+          <span className="truncate">
+            {app.client.fio || app.client.company_name || 'Клиент'}
+          </span>
+        </div>
+        {app.amount && (
+          <div className="flex items-center gap-2 text-xs">
+            <DollarSign className="h-3 w-3 text-muted-foreground" />
+            <span className="font-medium">{formatMoney(parseInt(app.amount))}</span>
+          </div>
+        )}
+        <div className="text-xs text-muted-foreground">
+          {new Date(app.created_at).toLocaleDateString('ru-RU')}
+        </div>
+      </CardContent>
+    </Card>
+  )
 
-    const style = {
-      transition,
-      transform: CSS.Translate.toString(transform),
-      opacity: isDragging ? 0.5 : 1,
-    }
-
-    return (
-      <div ref={setNodeRef} style={style} className="cursor-grab active:cursor-grabbing">
-        <Card className="hover:shadow-md transition-shadow">
-          <CardContent className="p-3 space-y-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-1">
-                <GripVertical className="h-3 w-3 text-muted-foreground" {...attributes} {...listeners} />
-                <p className="text-sm font-medium line-clamp-2">{app.title}</p>
-              </div>
-              <Badge variant="outline" className={getStatusColor(app.status)}>
-                {getStatusLabel(app.status)}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <User className="h-3 w-3" />
-              <span className="truncate">
-                {app.client.fio || app.client.company_name || 'Клиент'}
-              </span>
-            </div>
-            {app.amount && (
-              <div className="flex items-center gap-2 text-xs">
-                <DollarSign className="h-3 w-3 text-muted-foreground" />
-                <span className="font-medium">{formatMoney(parseInt(app.amount))}</span>
-              </div>
-            )}
-            <div className="text-xs text-muted-foreground">
-              {new Date(app.created_at).toLocaleDateString('ru-RU')}
-            </div>
-          </CardContent>
-        </Card>
+  const Column = ({ id, title, icon: Icon, color, apps, count }: { 
+    id: KanbanApplication['status']
+    title: string
+    icon: any
+    color: string
+    apps: KanbanApplication[]
+    count: number
+  }) => (
+    <div 
+      className={`space-y-2 p-3 rounded-lg border-2 transition-all min-h-[680px] ${color}`}
+      onDragOver={handleDragOver}
+      onDrop={(e) => handleDrop(e, id)}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4" />
+          <span className="text-sm font-semibold">{title}</span>
+        </div>
+        <Badge variant="outline" className="text-xs">{count}</Badge>
       </div>
-    )
-  }
-
-  const SortableApplicationList = ({ apps, status }: { apps: KanbanApplication[], status: string }) => (
-    <SortableContext items={apps.map(a => a.id)} strategy={verticalListSortingStrategy}>
-      <div className="space-y-2">
+      <div className="space-y-2" style={{ minHeight: '580px' }}>
         {apps.map(app => (
           <ApplicationCard key={app.id} app={app} />
         ))}
+        {Array.from({ length: Math.max(0, 5 - apps.length) }).map((_, i) => (
+          <div key={i} className="h-[110px] border-2 border-dashed border-gray-200 rounded-lg" />
+        ))}
       </div>
-    </SortableContext>
+    </div>
   )
 
   if (loading) {
     return (
       <div className="w-full h-full flex flex-col">
         <PageHeader name="Дашборд" />
-        <div className="flex-1 overflow-auto p-[12px] space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Card key={i}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-4 rounded" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-8 w-16 mb-2" />
-                  <Skeleton className="h-3 w-24" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <Skeleton className="h-5 w-32" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-[300px] w-full" />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <Skeleton className="h-5 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-[300px] w-full" />
-              </CardContent>
-            </Card>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Загрузка данных...</p>
           </div>
         </div>
       </div>
     )
   }
 
-  const clientTypeData = clientTypes
-    ? [
-        { name: 'Физ. лица', value: clientTypes.individuals },
-        { name: 'Юр. лица', value: clientTypes.legalEntities },
-      ]
-    : []
-
   return (
     <div className="w-full h-full flex flex-col">
       <PageHeader name="Дашборд" />
-      <div className="flex-1 overflow-auto p-[12px] space-y-4">
+      <div className="flex-1 overflow-auto p-[12px]">
         {/* Финансовые показатели */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
           <Card className="relative overflow-hidden">
             <div className="absolute inset-0 opacity-5 bg-gradient-to-br from-green-500/20 to-emerald-500/20" />
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -536,7 +456,7 @@ const DashboardPage = () => {
         </div>
 
         {/* Общая статистика */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
           <StatCard
             title="Клиенты"
             value={stats?.clients || 0}
@@ -579,83 +499,45 @@ const DashboardPage = () => {
             <CardDescription>Перетаскивайте заявки между статусами</CardDescription>
           </CardHeader>
           <CardContent>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCorners}
-              onDragStart={(event) => setActiveId(event.active.id as number)}
-              onDragEnd={handleDragEnd}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Новые */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm font-semibold text-blue-500">Новые</span>
-                    </div>
-                    <Badge variant="outline" className="bg-blue-500/20 text-blue-500 border-blue-500/30">
-                      {groupedApps.NEW.length}
-                    </Badge>
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <SortableApplicationList apps={groupedApps.NEW} status="NEW" />
-                  </ScrollArea>
-                </div>
-
-                {/* В работе */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Activity className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm font-semibold text-yellow-500">В работе</span>
-                    </div>
-                    <Badge variant="outline" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">
-                      {groupedApps.IN_PROGRESS.length}
-                    </Badge>
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <SortableApplicationList apps={groupedApps.IN_PROGRESS} status="IN_PROGRESS" />
-                  </ScrollArea>
-                </div>
-
-                {/* Завершены */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500" />
-                      <span className="text-sm font-semibold text-green-500">Завершены</span>
-                    </div>
-                    <Badge variant="outline" className="bg-green-500/20 text-green-500 border-green-500/30">
-                      {groupedApps.COMPLETED.length}
-                    </Badge>
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <SortableApplicationList apps={groupedApps.COMPLETED} status="COMPLETED" />
-                  </ScrollArea>
-                </div>
-
-                {/* Отменены */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <XCircle className="h-4 w-4 text-red-500" />
-                      <span className="text-sm font-semibold text-red-500">Отменены</span>
-                    </div>
-                    <Badge variant="outline" className="bg-red-500/20 text-red-500 border-red-500/30">
-                      {groupedApps.CANCELLED.length}
-                    </Badge>
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <SortableApplicationList apps={groupedApps.CANCELLED} status="CANCELLED" />
-                  </ScrollArea>
-                </div>
-              </div>
-            </DndContext>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Column
+                id="NEW"
+                title="Новые"
+                icon={Clock}
+                color="bg-blue-500/10 border-blue-500/20 text-blue-500"
+                apps={groupedApps.NEW}
+                count={groupedApps.NEW.length}
+              />
+              <Column
+                id="IN_PROGRESS"
+                title="В работе"
+                icon={Activity}
+                color="bg-yellow-500/10 border-yellow-500/20 text-yellow-500"
+                apps={groupedApps.IN_PROGRESS}
+                count={groupedApps.IN_PROGRESS.length}
+              />
+              <Column
+                id="COMPLETED"
+                title="Завершены"
+                icon={CheckCircle2}
+                color="bg-green-500/10 border-green-500/20 text-green-500"
+                apps={groupedApps.COMPLETED}
+                count={groupedApps.COMPLETED.length}
+              />
+              <Column
+                id="CANCELLED"
+                title="Отменены"
+                icon={XCircle}
+                color="bg-red-500/10 border-red-500/20 text-red-500"
+                apps={groupedApps.CANCELLED}
+                count={groupedApps.CANCELLED.length}
+              />
+            </div>
           </CardContent>
         </Card>
 
         {/* Графики */}
-        <Tabs defaultValue="revenue" className="space-y-4">
+        <Tabs defaultValue="revenue" className="space-y-4 mt-6">
           <TabsList>
             <TabsTrigger value="revenue">Доходы/Расходы</TabsTrigger>
             <TabsTrigger value="monthly">Месячная статистика</TabsTrigger>
@@ -684,37 +566,18 @@ const DashboardPage = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="h-[350px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={revenueChart}>
-                      <defs>
-                        <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="label" className="text-xs" />
-                      <YAxis className="text-xs" tickFormatter={(value: number) => `${(value || 0) / 1000}к`} />
-                      <Tooltip
-                        formatter={(value: any) => formatMoney(Number(value))}
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--popover))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                        }}
-                      />
-                      <Legend />
-                      <Area type="monotone" dataKey="income" name="Доход" stroke="#22c55e" fillOpacity={1} fill="url(#colorIncome)" />
-                      <Area type="monotone" dataKey="expense" name="Расход" stroke="#ef4444" fillOpacity={1} fill="url(#colorExpense)" />
-                      <Area type="monotone" dataKey="profit" name="Прибыль" stroke="#3b82f6" fill="transparent" strokeWidth={2} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                {revenueChart.length > 0 ? (
+                  <div className="h-[300px]">
+                    {/* Здесь будет график */}
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      График доходов и расходов
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                    Нет данных для отображения
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -722,316 +585,71 @@ const DashboardPage = () => {
           <TabsContent value="monthly">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base font-semibold">Месячная статистика</CardTitle>
+                <CardTitle>Месячная статистика</CardTitle>
                 <CardDescription>Динамика за последние 6 месяцев</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[350px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyStats}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="month" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <Tooltip
-                        formatter={(value: any) => formatMoney(Number(value))}
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--popover))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                        }}
-                      />
-                      <Legend />
-                      <Bar dataKey="income" name="Доход" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="expense" name="Расход" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                {monthlyStats.length > 0 ? (
+                  <div className="space-y-4">
+                    {monthlyStats.map((stat, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div>
+                          <p className="font-medium">{stat.month}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Новые клиенты: {stat.newClients} • Новые исполнители: {stat.newPerformers}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium">Заявок: {stat.newApplications}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Доход: {formatMoney(stat.income)} • Расход: {formatMoney(stat.expense)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                    Нет данных для отображения
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="clients">
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <PieChartIcon className="h-5 w-5" />
-                    Типы клиентов
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[250px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={clientTypeData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, value }) => `${name}: ${value}`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {clientTypeData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base font-semibold">Топ клиентов</CardTitle>
-                  <CardDescription>По сумме транзакций</CardDescription>
-                  <Button variant="ghost" size="sm" className="mt-2" asChild>
-                    <a href="/clients">Все</a>
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[250px]">
-                    {topClients.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">Нет данных</div>
-                    ) : (
-                      <div className="space-y-3">
-                        {topClients.map((client, index) => (
-                          <div key={client.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">
-                              {index + 1}
-                            </div>
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className="text-xs">
-                                {client.type === 'LEGAL_ENTITY'
-                                  ? (client.company_name || 'К')[0].toUpperCase()
-                                  : (client.fio || 'К')[0].toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm truncate">{getClientName(client)}</p>
-                              <p className="text-xs text-muted-foreground">{client.applicationsCount} заявок</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-semibold text-sm text-green-500">{formatMoney(client.totalSpent)}</p>
-                            </div>
-                          </div>
-                        ))}
+            <Card>
+              <CardHeader>
+                <CardTitle>Структура клиентов</CardTitle>
+                <CardDescription>Распределение по типам</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {clientTypes ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        <span>Физические лица</span>
                       </div>
-                    )}
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </div>
+                      <Badge variant="outline">{clientTypes.individuals}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        <span>Юридические лица</span>
+                      </div>
+                      <Badge variant="outline">{clientTypes.legalEntities}</Badge>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                    Нет данных для отображения
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
-
-        <div className="grid gap-4 lg:grid-cols-3">
-          {/* Топ исполнителей */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Star className="h-4 w-4 text-yellow-500" />
-                  Топ исполнителей
-                </CardTitle>
-                <Button variant="ghost" size="sm" asChild>
-                  <a href="/performers">Все</a>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[300px]">
-                {topPerformers.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Building2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p>Нет данных</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {topPerformers.map((performer, index) => (
-                      <div key={performer.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center text-xs font-bold text-yellow-500">
-                          {index + 1}
-                        </div>
-                        <Avatar className="h-8 w-8">
-                          {performer.avatar ? (
-                            <AvatarImage src={performer.avatar} />
-                          ) : (
-                            <AvatarFallback className="text-xs">
-                              {`${performer.first_name[0]}${performer.last_name[0]}`}
-                            </AvatarFallback>
-                          )}
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{`${performer.first_name} ${performer.last_name}`}</p>
-                          <p className="text-xs text-muted-foreground">{performer.applicationsCount} заявок</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold text-sm text-green-500">{formatMoney(performer.totalEarnings)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
-
-          {/* Последние заявки */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold">Последние заявки</CardTitle>
-                <Button variant="ghost" size="sm" asChild>
-                  <a href="/applications">Все</a>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[300px]">
-                {applications.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <FileText className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p>Нет заявок</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {applications.map((app) => (
-                      <div key={app.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-medium text-sm truncate">{app.title}</p>
-                            <Badge className={getStatusColor(app.status)} variant="outline">
-                              {getStatusLabel(app.status)}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {getClientName(app.client)}
-                          </p>
-                        </div>
-                        <div className="text-right text-xs text-muted-foreground">
-                          <p>{new Date(app.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</p>
-                          {app.performers && app.performers.length > 0 && (
-                            <Badge variant="secondary" className="text-xs mt-1">
-                              {app.performers.length} исп.
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Последние транзакции и звонки */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Транзакции
-                </CardTitle>
-                <Button variant="ghost" size="sm" asChild>
-                  <a href="/transactions">Все</a>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[250px]">
-                {transactions.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <DollarSign className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p>Нет транзакций</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {transactions.map((t) => (
-                      <div key={t.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-full ${t.type === 'INCOME' ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-                            {t.type === 'INCOME' ? (
-                              <TrendingUp size={16} className="text-green-500" />
-                            ) : (
-                              <TrendingDown size={16} className="text-red-500" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{getClientName(t.client)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {t.type === 'INCOME' ? 'Приход' : 'Расход'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-semibold text-sm ${t.type === 'INCOME' ? 'text-green-500' : 'text-red-500'}`}>
-                            {t.type === 'INCOME' ? '+' : '-'}{formatMoney(t.amount)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(t.transaction_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <PhoneCall className="h-4 w-4" />
-                  Входящие звонки
-                </CardTitle>
-                <Button variant="ghost" size="sm" asChild>
-                  <a href="/incoming-calls">Все</a>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[250px]">
-                {incomingCalls.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <PhoneCall className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p>Нет звонков</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {incomingCalls.map((call) => (
-                      <div key={call.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/30">
-                        <div className={`p-2 rounded-full ${call.client ? 'bg-green-500/20' : 'bg-gray-500/20'}`}>
-                          <PhoneCall size={16} className={call.client ? 'text-green-500' : 'text-gray-500'} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            {call.client ? getClientName(call.client) : call.phone || 'Неизвестный'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(call.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                        {call.duration && (
-                          <Badge variant="secondary" className="text-xs">
-                            {Math.floor(call.duration / 60)}:{(call.duration % 60).toString().padStart(2, '0')}
-                          </Badge>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   )
