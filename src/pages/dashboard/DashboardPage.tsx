@@ -174,7 +174,7 @@ const DashboardPage = () => {
       api.get(`/dashboard/revenue-chart?period=${chartPeriod}`).catch(() => []),
       api.get('/dashboard/client-types').catch(() => null),
       api.get('/dashboard/monthly-stats?months=6').catch(() => []),
-      api.get('/tasks').catch(() => []),
+      api.get('/tasks?limit=1000').catch(() => []),
       api.get('/dashboard/applications/recent?limit=5').catch(() => []),
       api.get('/dashboard/calls/recent?limit=5').catch(() => []),
       api.get('/dashboard/top-performers?limit=5').catch(() => []),
