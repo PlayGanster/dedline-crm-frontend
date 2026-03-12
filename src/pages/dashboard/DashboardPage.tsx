@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { api } from "@/shared/api/api.client"
+import { useNotification } from "@/features/notification"
 import { PageHeader } from "@/features/page-header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -19,8 +20,34 @@ import {
   ArrowDownRight,
   Activity,
   Star,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Briefcase,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  User,
+  GripVertical
 } from "lucide-react"
+import {
+  DndContext,
+  DragEndEvent,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  DefaultDropAnimation,
+  dropAnimationDefaultCSS
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  SortableContext
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   XAxis,
   YAxis,
@@ -107,9 +134,22 @@ interface MonthlyStat {
   expense: number
 }
 
+interface KanbanApplication {
+  id: number
+  title: string
+  status: 'NEW' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+  amount: string | null
+  client: {
+    fio?: string | null
+    company_name?: string | null
+  }
+  created_at: string
+}
+
 const COLORS = ['#22c55e', '#ef4444', '#3b82f6', '#f59e0b', '#8b5cf6']
 
 const DashboardPage = () => {
+  const { success: notifySuccess, error: notifyError } = useNotification()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [financial, setFinancial] = useState<FinancialStats | null>(null)
   const [applications, setApplications] = useState<any[]>([])
@@ -122,6 +162,22 @@ const DashboardPage = () => {
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStat[]>([])
   const [chartPeriod, setChartPeriod] = useState<'week' | 'month' | 'year'>('month')
   const [loading, setLoading] = useState(true)
+  const [kanbanApps, setKanbanApps] = useState<KanbanApplication[]>([])
+  const [groupedApps, setGroupedApps] = useState({
+    NEW: [] as KanbanApplication[],
+    IN_PROGRESS: [] as KanbanApplication[],
+    COMPLETED: [] as KanbanApplication[],
+    CANCELLED: [] as KanbanApplication[],
+  })
+  const [activeId, setActiveId] = useState<number | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+  )
 
   useEffect(() => {
     Promise.all([
@@ -135,6 +191,7 @@ const DashboardPage = () => {
       api.get('/dashboard/top-performers?limit=5').catch(() => []),
       api.get('/dashboard/top-clients?limit=5').catch(() => []),
       api.get('/dashboard/monthly-stats?months=6').catch(() => []),
+      api.get('/applications?status=NEW,IN_PROGRESS,COMPLETED,CANCELLED&limit=50').catch(() => []),
     ]).then(([
       statsData,
       financialData,
@@ -145,7 +202,8 @@ const DashboardPage = () => {
       clientTypesData,
       performersData,
       clientsData,
-      monthlyData
+      monthlyData,
+      kanbanData
     ]: any) => {
       setStats(statsData || null)
       setFinancial(financialData || null)
@@ -157,9 +215,69 @@ const DashboardPage = () => {
       setTopPerformers(performersData || [])
       setTopClients(clientsData || [])
       setMonthlyStats(monthlyData || [])
+      setKanbanApps(kanbanData || [])
+      
+      // Группируем по статусам (по 5 последних на каждый статус)
+      const grouped = {
+        NEW: (kanbanData || []).filter((a: any) => a.status === 'NEW')
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5),
+        IN_PROGRESS: (kanbanData || []).filter((a: any) => a.status === 'IN_PROGRESS')
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5),
+        COMPLETED: (kanbanData || []).filter((a: any) => a.status === 'COMPLETED')
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5),
+        CANCELLED: (kanbanData || []).filter((a: any) => a.status === 'CANCELLED')
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5),
+      }
+      setGroupedApps(grouped)
       setLoading(false)
     })
   }, [chartPeriod])
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    
+    if (!over) return
+    
+    const appId = active.id as number
+    const newStatus = over.id as KanbanApplication['status']
+    
+    // Находим заявку
+    const app = kanbanApps.find(a => a.id === appId)
+    if (!app || app.status === newStatus) return
+    
+    try {
+      // Обновляем статус на бэкенде
+      await api.put(`/applications/${appId}`, { status: newStatus })
+      
+      // Обновляем локальное состояние
+      setKanbanApps(prev => prev.map(a => a.id === appId ? { ...a, status: newStatus } : a))
+      
+      // Перегруппировываем
+      const grouped = {
+        NEW: kanbanApps.filter(a => a.id === appId ? newStatus === 'NEW' : a.status === 'NEW')
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5),
+        IN_PROGRESS: kanbanApps.filter(a => a.id === appId ? newStatus === 'IN_PROGRESS' : a.status === 'IN_PROGRESS')
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5),
+        COMPLETED: kanbanApps.filter(a => a.id === appId ? newStatus === 'COMPLETED' : a.status === 'COMPLETED')
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5),
+        CANCELLED: kanbanApps.filter(a => a.id === appId ? newStatus === 'CANCELLED' : a.status === 'CANCELLED')
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5),
+      }
+      setGroupedApps(grouped)
+      
+      notifySuccess('Статус обновлен', `Заявка "${app.title}" перемещена в "${getStatusLabel(newStatus)}"`)
+    } catch (err: any) {
+      notifyError('Ошибка', err.message || 'Не удалось обновить статус')
+    }
+  }
 
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('ru-RU', {
@@ -218,6 +336,65 @@ const DashboardPage = () => {
         )}
       </CardContent>
     </Card>
+  )
+
+  const ApplicationCard = ({ app }: { app: KanbanApplication }) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+      id: app.id,
+      data: {
+        type: 'Application',
+        app,
+      },
+    })
+
+    const style = {
+      transition,
+      transform: CSS.Translate.toString(transform),
+      opacity: isDragging ? 0.5 : 1,
+    }
+
+    return (
+      <div ref={setNodeRef} style={style} className="cursor-grab active:cursor-grabbing">
+        <Card className="hover:shadow-md transition-shadow">
+          <CardContent className="p-3 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-1">
+                <GripVertical className="h-3 w-3 text-muted-foreground" {...attributes} {...listeners} />
+                <p className="text-sm font-medium line-clamp-2">{app.title}</p>
+              </div>
+              <Badge variant="outline" className={getStatusColor(app.status)}>
+                {getStatusLabel(app.status)}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <User className="h-3 w-3" />
+              <span className="truncate">
+                {app.client.fio || app.client.company_name || 'Клиент'}
+              </span>
+            </div>
+            {app.amount && (
+              <div className="flex items-center gap-2 text-xs">
+                <DollarSign className="h-3 w-3 text-muted-foreground" />
+                <span className="font-medium">{formatMoney(parseInt(app.amount))}</span>
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground">
+              {new Date(app.created_at).toLocaleDateString('ru-RU')}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const SortableApplicationList = ({ apps, status }: { apps: KanbanApplication[], status: string }) => (
+    <SortableContext items={apps.map(a => a.id)} strategy={verticalListSortingStrategy}>
+      <div className="space-y-2">
+        {apps.map(app => (
+          <ApplicationCard key={app.id} app={app} />
+        ))}
+      </div>
+    </SortableContext>
   )
 
   if (loading) {
@@ -391,6 +568,91 @@ const DashboardPage = () => {
             color="from-teal-500/20 to-cyan-500/20"
           />
         </div>
+
+        {/* Канбан доска заявок */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5" />
+              Заявки (Канбан)
+            </CardTitle>
+            <CardDescription>Перетаскивайте заявки между статусами</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={(event) => setActiveId(event.active.id as number)}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Новые */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm font-semibold text-blue-500">Новые</span>
+                    </div>
+                    <Badge variant="outline" className="bg-blue-500/20 text-blue-500 border-blue-500/30">
+                      {groupedApps.NEW.length}
+                    </Badge>
+                  </div>
+                  <ScrollArea className="h-[300px]">
+                    <SortableApplicationList apps={groupedApps.NEW} status="NEW" />
+                  </ScrollArea>
+                </div>
+
+                {/* В работе */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-yellow-500" />
+                      <span className="text-sm font-semibold text-yellow-500">В работе</span>
+                    </div>
+                    <Badge variant="outline" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">
+                      {groupedApps.IN_PROGRESS.length}
+                    </Badge>
+                  </div>
+                  <ScrollArea className="h-[300px]">
+                    <SortableApplicationList apps={groupedApps.IN_PROGRESS} status="IN_PROGRESS" />
+                  </ScrollArea>
+                </div>
+
+                {/* Завершены */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      <span className="text-sm font-semibold text-green-500">Завершены</span>
+                    </div>
+                    <Badge variant="outline" className="bg-green-500/20 text-green-500 border-green-500/30">
+                      {groupedApps.COMPLETED.length}
+                    </Badge>
+                  </div>
+                  <ScrollArea className="h-[300px]">
+                    <SortableApplicationList apps={groupedApps.COMPLETED} status="COMPLETED" />
+                  </ScrollArea>
+                </div>
+
+                {/* Отменены */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-4 w-4 text-red-500" />
+                      <span className="text-sm font-semibold text-red-500">Отменены</span>
+                    </div>
+                    <Badge variant="outline" className="bg-red-500/20 text-red-500 border-red-500/30">
+                      {groupedApps.CANCELLED.length}
+                    </Badge>
+                  </div>
+                  <ScrollArea className="h-[300px]">
+                    <SortableApplicationList apps={groupedApps.CANCELLED} status="CANCELLED" />
+                  </ScrollArea>
+                </div>
+              </div>
+            </DndContext>
+          </CardContent>
+        </Card>
 
         {/* Графики */}
         <Tabs defaultValue="revenue" className="space-y-4">
