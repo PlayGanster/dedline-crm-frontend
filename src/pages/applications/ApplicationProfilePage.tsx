@@ -248,7 +248,7 @@ const ApplicationProfilePage = () => {
     } else {
       setEditingTask(null)
       setTaskForm({
-        service_type: 'cleaning',
+        service_type: 'loaders',
         payment_type: 'cashless',
         work_location: '',
         meeting_point: '',
@@ -278,9 +278,17 @@ const ApplicationProfilePage = () => {
 
   const getTaskTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      'cleaning': 'Уборка',
-      'loading': 'Погрузка',
-      'construction': 'Строительство',
+      'loaders': 'Грузчики',
+      'laborers': 'Разнорабочие',
+      'waste_removal': 'Вывоз мусора',
+      'dismantling': 'Демонтажные работы',
+      'rigging': 'Такелажные работы',
+      'special_equipment': 'Спецтехника',
+      'office_move': 'Офисный переезд',
+      'apartment_move': 'Квартирный переезд',
+      'cleaning': 'Уборка и клининг',
+      'cargo_transportation': 'Грузовые перевозки',
+      'transport': 'Транспорт',
     }
     return labels[type] || type
   }
@@ -1347,9 +1355,17 @@ const ApplicationProfilePage = () => {
                   <Select value={taskForm?.service_type} onValueChange={(v) => updateTaskForm('service_type', v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cleaning">Уборка</SelectItem>
-                      <SelectItem value="loading">Погрузка</SelectItem>
-                      <SelectItem value="construction">Строительство</SelectItem>
+                      <SelectItem value="loaders">Грузчики</SelectItem>
+                      <SelectItem value="laborers">Разнорабочие</SelectItem>
+                      <SelectItem value="waste_removal">Вывоз мусора</SelectItem>
+                      <SelectItem value="dismantling">Демонтажные работы</SelectItem>
+                      <SelectItem value="rigging">Такелажные работы</SelectItem>
+                      <SelectItem value="special_equipment">Спецтехника</SelectItem>
+                      <SelectItem value="office_move">Офисный переезд</SelectItem>
+                      <SelectItem value="apartment_move">Квартирный переезд</SelectItem>
+                      <SelectItem value="cleaning">Уборка и клининг</SelectItem>
+                      <SelectItem value="cargo_transportation">Грузовые перевозки</SelectItem>
+                      <SelectItem value="transport">Транспорт</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
